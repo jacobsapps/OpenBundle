@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">OpenBundle Size Lens illustration</title>
+  <desc id="desc">A dark local report with blue, violet, green, orange, and red circles sized by bundle content.</desc>
+  <rect width="1200" height="520" rx="28" fill="#171417"/>
+  <rect x="0" width="218" height="520" rx="28" fill="#211d1f"/>
+  <circle cx="38" cy="42" r="16" fill="#ff681f"/>
+  <text x="64" y="47" fill="#faf7f4" font-family="system-ui,sans-serif" font-size="18" font-weight="800">OpenBundle</text>
+  <rect x="18" y="82" width="182" height="70" rx="15" fill="#2a2528" stroke="#4a4347"/>
+  <circle cx="50" cy="117" r="20" fill="#b6d64b"/>
+  <text x="78" y="116" fill="#faf7f4" font-family="Georgia,serif" font-size="18" font-weight="700">My App</text>
+  <text x="78" y="134" fill="#aaa1a5" font-family="system-ui,sans-serif" font-size="10">173 MB</text>
+  <rect x="18" y="174" width="182" height="43" rx="10" fill="#3a3337"/>
+  <rect x="18" y="174" width="3" height="43" rx="2" fill="#ff681f"/>
+  <text x="46" y="201" fill="#faf7f4" font-family="system-ui,sans-serif" font-size="13" font-weight="700">Size lens</text>
+  <text x="248" y="48" fill="#ff681f" font-family="system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="2">SIZE LENS</text>
+  <text x="248" y="82" fill="#faf7f4" font-family="Georgia,serif" font-size="31" font-weight="700">My App</text>
+  <rect x="248" y="104" width="926" height="390" rx="20" fill="#191619" stroke="#40383e"/>
+  <circle cx="383" cy="294" r="101" fill="#8b67f2" stroke="#d4ccff" stroke-width="2"/>
+  <ellipse cx="383" cy="294" rx="74" ry="32" fill="none" stroke="#fff" stroke-opacity=".3" transform="rotate(-28 383 294)"/>
+  <ellipse cx="383" cy="294" rx="74" ry="32" fill="none" stroke="#fff" stroke-opacity=".3" transform="rotate(32 383 294)"/>
+  <circle cx="383" cy="255" r="25" fill="#2f80ed" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="350" cy="303" r="19" fill="#f35bbd" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="401" cy="314" r="31" fill="#5167e8" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="425" cy="267" r="16" fill="#00c2a8" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="478" cy="418" r="53" fill="#ff8a1f" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="554" cy="247" r="88" fill="#2f80ed" stroke="#c9e4ff" stroke-width="2"/>
+  <ellipse cx="554" cy="247" rx="64" ry="27" fill="none" stroke="#fff" stroke-opacity=".25" transform="rotate(-28 554 247)"/>
+  <ellipse cx="554" cy="247" rx="64" ry="27" fill="none" stroke="#fff" stroke-opacity=".25" transform="rotate(32 554 247)"/>
+  <circle cx="554" cy="212" r="22" fill="#00b8d9" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="525" cy="257" r="19" fill="#00c2a8" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="576" cy="270" r="25" fill="#ad62e8" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="711" cy="342" r="94" fill="#5167e8" stroke="#ccd3ff" stroke-width="2"/>
+  <circle cx="689" cy="306" r="25" fill="#00a6fb" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="738" cy="357" r="29" fill="#00b8d9" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="710" cy="393" r="17" fill="#ad62e8" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="844" cy="216" r="71" fill="#19b96e" stroke="#c4ffe1" stroke-width="2"/>
+  <circle cx="824" cy="202" r="20" fill="#00c2a8" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="860" cy="227" r="24" fill="#72bd33" stroke="#fff" stroke-opacity=".45"/>
+  <circle cx="949" cy="363" r="64" fill="#d94ecb" stroke="#ffd3f6" stroke-width="2"/>
+  <circle cx="1044" cy="238" r="55" fill="#00b8d9" stroke="#c8f5ff" stroke-width="2"/>
+  <circle cx="1080" cy="359" r="43" fill="#ff3448" stroke="#ffd3d8" stroke-width="3"/>
+  <text x="383" y="298" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="17" font-weight="800">Watch</text>
+  <text x="554" y="251" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="16" font-weight="800">Frameworks</text>
+  <text x="711" y="346" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="17" font-weight="800">Main binary</text>
+  <text x="844" y="220" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="800">Assets</text>
+  <text x="1080" y="363" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="10" font-weight="800">Duplicate</text>
+</svg>

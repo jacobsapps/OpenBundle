@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+build/
+dist/
+*.egg-info/
+.venv/
+.local/
+*-openbundle.html
+*-openbundle.json
+*-bundlelens.html
+*-bundlelens.json
+*.app/
+*.ipa
+*.xcarchive/
+*.dSYM/
+DerivedData/
