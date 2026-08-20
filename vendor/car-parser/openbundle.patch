@@ -1,0 +1,107 @@
+diff --git a/car-wasm/src/archive.rs b/car-wasm/src/archive.rs
+index 7d6fbfa..d6b2ad7 100644
+--- a/car-wasm/src/archive.rs
++++ b/car-wasm/src/archive.rs
+@@ -120,6 +120,12 @@ impl ArchiveRuntime {
+                         width: item.width(),
+                         height: item.height(),
+                         scale: item.scale(),
++                        size_on_disk: item.header().size_on_disk(),
++                        payload_size: item.header().bitmap_list.rendition_length as usize,
++                        serialized_overhead: item.header().size_on_disk().saturating_sub(
++                            item.header().bitmap_list.rendition_length as usize,
++                        ),
++                        opaque: resolved.payload.header().flags.is_opaque,
+                         logical_layout: layout_name(item.layout()).to_string(),
+                         resolved_encoding: encoding_name(resolved.payload.encoding()).to_string(),
+                         entry_kind: classification.entry_kind,
+diff --git a/car-wasm/Cargo.toml b/car-wasm/Cargo.toml
+index 8132966..9400dc4 100644
+--- a/car-wasm/Cargo.toml
++++ b/car-wasm/Cargo.toml
+@@ -16,5 +16,6 @@ image = { workspace = true }
+ js-sys = { workspace = true }
+ serde = { version = "1", features = ["derive"] }
++serde_bytes = "=0.11.19"
+ serde-wasm-bindgen = { workspace = true }
+ thiserror = { workspace = true }
+ wasm-bindgen = { workspace = true }
+diff --git a/car-wasm/src/types.rs b/car-wasm/src/types.rs
+index ca6624d..bc0bd92 100644
+--- a/car-wasm/src/types.rs
++++ b/car-wasm/src/types.rs
+@@ -45,6 +45,10 @@ pub struct EntryInfo {
+     pub width: u32,
+     pub height: u32,
+     pub scale: u32,
++    pub size_on_disk: usize,
++    pub payload_size: usize,
++    pub serialized_overhead: usize,
++    pub opaque: bool,
+     pub logical_layout: String,
+     pub resolved_encoding: String,
+     pub entry_kind: EntryKind,
+@@ -75,6 +79,10 @@ pub struct EntryListItem {
+     pub width: u32,
+     pub height: u32,
+     pub scale: u32,
++    pub size_on_disk: usize,
++    pub payload_size: usize,
++    pub serialized_overhead: usize,
++    pub opaque: bool,
+     pub resolved_encoding: String,
+     pub entry_kind: EntryKind,
+     pub preview_strategy: PreviewStrategy,
+@@ -95,5 +103,6 @@ pub enum DisplayPayload {
+         preserves_original_format: bool,
+         selection_reason: SelectionReason,
++        #[serde(with = "serde_bytes")]
+         bytes: Vec<u8>,
+     },
+     CanvasRgba {
+@@ -104,5 +113,6 @@ pub enum DisplayPayload {
+         preserves_original_format: bool,
+         selection_reason: SelectionReason,
++        #[serde(with = "serde_bytes")]
+         rgba: Vec<u8>,
+     },
+     Document {
+@@ -112,5 +122,6 @@ pub enum DisplayPayload {
+         preserves_original_format: bool,
+         selection_reason: SelectionReason,
++        #[serde(with = "serde_bytes")]
+         bytes: Vec<u8>,
+     },
+     DownloadOnly {
+@@ -129,6 +140,7 @@ pub enum DisplayPayload {
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct DownloadPayload {
++    #[serde(with = "serde_bytes")]
+     pub bytes: Vec<u8>,
+     pub mime_type: String,
+     pub suggested_extension: String,
+@@ -161,7 +173,11 @@ pub struct DiagnosticIssueSummary {
+ #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(tag = "preview_strategy", rename_all = "kebab-case")]
+ pub enum ThumbnailPayload {
+-    ImgBinary { mime_type: String, bytes: Vec<u8> },
++    ImgBinary {
++        mime_type: String,
++        #[serde(with = "serde_bytes")]
++        bytes: Vec<u8>,
++    },
+     DownloadOnly,
+ }
+ 
+@@ -175,6 +191,10 @@ impl EntryInfo {
+             width: self.width,
+             height: self.height,
+             scale: self.scale,
++            size_on_disk: self.size_on_disk,
++            payload_size: self.payload_size,
++            serialized_overhead: self.serialized_overhead,
++            opaque: self.opaque,
+             resolved_encoding: self.resolved_encoding.clone(),
+             entry_kind: self.entry_kind,
+             preview_strategy: self.preview_strategy,

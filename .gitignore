@@ -5,6 +5,7 @@ build/
 dist/
 *.egg-info/
 .venv/
+.venv-packaging/
 .local/
 *-openbundle.html
 *-openbundle.json
@@ -12,6 +13,8 @@ dist/
 *-bundlelens.json
 *.app/
 *.ipa
+/ipas/
+/exports/
 *.xcarchive/
 *.dSYM/
 DerivedData/

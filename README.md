@@ -1,197 +1,164 @@
 # OpenBundle
 
-OpenBundle is a private, local iOS bundle-size analyzer. Give it an `.ipa`,
-`.app`, or `.xcarchive`; it writes a single interactive HTML file with a
-circle-packed Size Lens and prioritized Quick Wins.
+OpenBundle is a browser-local iOS bundle analyzer. Drop an `.ipa` or zipped app
+archive into the page and it produces an interactive treemap and evidence-backed
+recommendations without uploading the bundle.
 
-Nothing is uploaded. The report has no CDN, analytics, external JavaScript, or
-server dependency.
+The product is deliberately browser-only. The Python analysis engine and HTML
+report renderer stay host-neutral so another thin host can be added later, but
+there is no supported CLI or macOS executable.
 
-![OpenBundle uses a flat, colorful circle lens with compressed size scaling and nested previews.](docs/size-lens-description.svg)
+## What the browser checks
 
-## Quick start
-
-Requirements: macOS, Python 3.11+, and ideally Xcode/Command Line Tools.
-
-```bash
-# No installation needed
-./openbundle ~/Downloads/MyApp.ipa --open
-
-# Archives give OpenBundle access to any top-level Linkmaps directory
-./openbundle ~/Library/Developer/Xcode/Archives/.../MyApp.xcarchive \
-  --output ./my-app-size.html \
-  --json
-```
-
-The command prints the report’s full local path. `--open` opens that local file
-in your default browser. Use `./openbundle --help` for all options.
-
-You can also install the command in an isolated environment:
-
-```bash
-python3 -m pip install -e .
-openbundle analyze MyApp.ipa --open
-```
-
-## What the report does
-
-### Size Lens
-
-- Sizes every file and nested bundle, framework, extension, and resource.
-- Packs the current region into non-overlapping circles using logarithmically
-  compressed area weighting, so dominant binaries stay dominant without
-  reducing small files to unreadable dots.
-- Treats each parent like an atom: faint orbital shells reveal its largest
-  child particles, hover exposes their labels, and one continuous microscope
-  transition opens the next level. The back button and breadcrumb return to
-  earlier levels.
-- Searches file paths, framework names, asset names, Mach-O sections, and
-  Linkmap compile units.
-- Switches between uncompressed bundle bytes, compressed download estimate,
-  and 4 KB filesystem allocation estimate.
-- Uses a vivid category and Mach-O-section palette inspired by Jacob’s Tech
-  Tavern, while reserving red exclusively for exact duplicates.
-- Colors exact duplicate files, asset renditions, and complete embedded
-  components red; other findings use amber dots.
-
-When Apple’s `assetutil` is installed, `Assets.car` is expanded into named
-assets using its `SizeOnDisk` and digest metadata. Mach-O binaries are expanded
-into architectures, segments, and sections. For `.xcarchive` inputs containing
-a top-level `Linkmaps` directory, compile-unit attribution replaces the section
-view where a matching link map is found.
-
-### Current checks
-
-| Check | How OpenBundle evaluates it |
+| Check | Browser implementation |
 | --- | --- |
-| Exact duplicate files | SHA-256 and byte size; keeps one copy in the saving estimate |
-| Duplicate catalog renditions | `assetutil` digest and on-disk rendition size |
-| Duplicate embedded components | Fingerprints complete frameworks, bundles, extensions, and nested apps while ignoring signing-only files |
-| Image compression / HEIC | Non-destructive local `sips` conversion at quality 85; flags savings over 4 KB |
-| Very high-resolution images | Pixel dimensions from `sips`, with a review threshold of 3,000 px |
-| Alternate app icon detail | Uses `CFBundleAlternateIcons`, then simulates a 180 px downscale and required 1024 px export |
-| Binary symbol stripping | Runs `strip -rSTx` against a temporary output and compares byte size; never modifies the app |
-| Release coverage instrumentation | Measures `__LLVM_COV`, `__llvm_prf*`, and `__llvm_cov*` payloads that should normally not ship |
-| Legacy embedded bitcode | Measures `__LLVM` segments left by older build settings or prebuilt dependencies |
-| Unnecessary files | Headers, module interfaces, source, scripts, docs, build settings, symbol maps, and related build-time files |
-| Embedded provisioning | Reports profile bytes as review-only because device/ad hoc builds may require them |
-| Small-file overhead | 4 KB allocation slack for loose files, plus guidance about code-signature entries |
-| Loose image scales | Groups `@1x`/`@2x`/`@3x` files that miss asset-catalog thinning |
-| Dynamic frameworks | Counts embedded dynamic images and estimates segment page-alignment slack |
-| Simulator architectures | Finds x86/i386 or simulator slices in fat distribution binaries |
-| Localization minification | Finds binary `.strings` plists and removable translator comments |
-| Target-membership mistakes | Highlights repeated large `Assets.car` files in frameworks/extensions |
-| Dependency product sprawl | Groups modular AWS, Amplify, Firebase, Google, Stripe, and Twilio frameworks for manual audit |
-| Debug/test dependencies | Name-based check for common test, injection, and inspection frameworks |
-| Bundled media | Large video/audio review with bitrate and on-demand delivery guidance |
-| Lottie repetition | Exact file duplication plus a conservative structure-similarity heuristic |
-| Illustration-like SVGs | Finds large, path-heavy, or raster-embedding SVGs for raster comparison |
+| Remove duplicate files | SHA-256 and exact byte size for loose files; content digests over decoded rasters or preserved encoded payloads, with exact on-disk sizes for supported `Assets.car` renditions |
+| Optimize images | Measures quality-85 conversions for loose images and supported catalog renditions; requires at least 4 KB of measured saving |
+| Strip binary symbols | Parses 32- and 64-bit Mach-O symbol and string tables and models `strip -rSTx` without invoking Apple tools |
+| Remove binary symbol metadata | Parses modern and legacy dyld export tries, counts executable exports, and estimates reducible metadata |
+| Review static linking | Resolves `LC_RPATH` load commands to embedded frameworks and ranks one-consumer review candidates by shipped size |
 
-Savings marked **high confidence** are derived from exact bytes or an actual
-temporary tool simulation. **Review** findings deliberately show no saving when
-the artifact cannot prove that a resource or module is unused.
+The report shows measured recommendations of 100 KB or more, ordered by saving.
 
-## Why these checks
+## Report views
 
-Emerge documented X-Ray as a zoomable, searchable treemap that expands asset
-catalogs and binaries, with duplicates and unnecessary files colored red:
-[X-Ray documentation](https://docs.emergetools.com/docs/treemap).
+- Bundle map and size-ranked recommendations
+- Images with one representative rendition per asset
+- Targets, embedded frameworks, linker consumers, and static/mergeable reviews
+- Mach-O binaries with strip/export opportunities and section composition
+- Declared capabilities, privacy manifests, and entitlements
+- App and component localizations
 
-Its public iOS size-insight set included:
+Completed analyses are saved as report JSON in IndexedDB. IPA bytes and imported
+HTML are never stored. Saved reports can be reopened, exported, or compared with
+another saved/imported report or a newly analyzed IPA. This library belongs to
+the current browser profile and origin; clearing site data removes it.
 
-- [Duplicate hashing across files and asset catalogs](https://docs.emergetools.com/docs/remove-duplicates)
-- [Quality-85 image recompression and HEIC conversion above a 4 KB threshold](https://docs.emergetools.com/docs/optimize-images)
-- [Production Swift/local symbol stripping, with the important dSYM warning](https://docs.emergetools.com/docs/strip-binary-symbols)
-- [UTF-8 localized strings and removal of production translator comments](https://docs.emergetools.com/docs/minify-localized-strings)
-- [Build-time and informational files that should not ship](https://docs.emergetools.com/docs/unnecessary-files)
-- [Code-signature and filesystem overhead from many small files](https://docs.emergetools.com/docs/avoid-many-files)
-- [Asset catalogs for thinning loose scales and packing data](https://docs.emergetools.com/docs/use-asset-catalogs)
-- [Dynamic-framework page overhead and the static-linking trade-off](https://docs.emergetools.com/docs/unmapped-size)
-- [Oversized alternate icons](https://docs.emergetools.com/docs/optimize-icons)
-- [Protocols with no conforming type in the binary](https://docs.emergetools.com/docs/unused-protocols)
+## Run the browser app locally
 
-OpenBundle implements the artifact checks that can be reproduced safely and
-locally with Apple tooling, then adds practical audits for bundled media,
-modular SDKs, target membership, Lottie, and detailed illustrations.
+```bash
+python3 scripts/build_web.py
+python3 -m http.server 8000 --directory dist/web
+```
 
-Apple’s current guidance also recommends checking Release optimization and
-stripping settings, removing unused assets, using asset catalogs, and moving
-payload data out of source code:
-[basic app-size optimization](https://developer.apple.com/documentation/xcode/doing-basic-optimization-to-reduce-your-app-s-size).
-The reflection review follows Apple’s documented
-[`SWIFT_REFLECTION_METADATA_LEVEL`](https://developer.apple.com/documentation/xcode/build-settings-reference)
-trade-offs and is deliberately never presented as guaranteed savings.
+Open <http://localhost:8000> and choose an `.ipa` or `.zip`. Do not open the
+HTML through a `file:` URL: Web Workers and the packaged core require an HTTP
+origin.
 
-### Quick Wins
+`dist/web` is a static site with relative application URLs, so it can be copied
+to a subpath such as `/openbundle/` on Vercel, GitHub Pages, S3, or any other
+static host. There is no analysis API and no uploaded bundle to secure.
 
-The report keeps measured savings separate from review items and gives every
-finding one short next step. In addition to the byte-saving checks above, it
-flags oversized embedded targets, missing Link Maps, large embedded asset
-catalogs, Swift reflection names, payload-like strings compiled into binaries,
-and aggregate bundled video/audio.
-
-## Static libraries versus dynamic frameworks
-
-A small source module can become a surprisingly large dynamic framework because
-the complete product, signing metadata, load commands, Swift runtime metadata,
-and page-aligned Mach-O segments are shipped. A static linker can often pull
-only referenced object files into the app executable. That is why conversions
-can sometimes resemble “8.3 MB dynamic” versus “0.8 MB static.”
-
-It is not a universal rule:
-
-- Static code can be duplicated into the main app and multiple extensions.
-- Some vendor products support only dynamic embedding.
-- Objective-C categories and linker flags such as `-ObjC` can change what is
-  pulled from a static archive.
-- A dynamic framework can be the correct boundary for genuinely shared runtime
-  code.
-
-OpenBundle therefore reports the measured dynamic frameworks and alignment
-estimate, but marks the conversion as **Review**. Rebuild and compare the
-exported IPA before accepting the change.
-
-## What a shipped artifact cannot prove
-
-OpenBundle does **not** label arbitrary source code or SDK products “dead.” A
-Mach-O file alone cannot reliably prove runtime reachability through reflection,
-Objective-C selectors, dependency injection, plug-in lookup, or feature flags.
-Similarly, a protocol with no emitted conformance can still appear in a dynamic
-cast.
-
-For dead-code work:
-
-1. Enable `DEAD_CODE_STRIPPING = YES` in Release.
-2. Archive with Linkmaps to attribute remaining bytes to compile units.
-3. Combine static reachability with production-like runtime coverage.
-4. Delete code in small, testable changes and compare exported IPAs.
-
-The exact App Store download number also requires Apple’s thinning and
-compression pipeline. OpenBundle shows IPA compressed entries when given an
-IPA, and a per-file deflate estimate for `.app`/`.xcarchive` inputs.
-
-## Linkmap layout
-
-OpenBundle recognizes Emerge’s documented archive layout:
+## Architecture
 
 ```text
-MyApp.xcarchive/
-  Products/Applications/MyApp.app/
-  dSYMs/
-  Linkmaps/
-    MyApp-LinkMap-normal-arm64.txt
+Browser page
+  └─ Web Worker
+       ├─ Pyodide → shared Python inventory, Mach-O checks, recommendations
+       ├─ pinned CAR WASM → asset rendition metadata, decoding, content hashes
+       └─ Canvas encoders → measured HEIC/JPEG opportunities when supported
+            └─ self-contained report JSON + HTML → treemap UI
 ```
 
-In Xcode, set **Write Link Map File** to `YES`, then copy the Release link maps
-into the archive’s top-level `Linkmaps` folder as part of your archive process.
+The boundaries are intentional:
+
+- `src/openbundle/analyzer.py` owns policy and recommendation thresholds.
+- `src/openbundle/macho.py` is a bounded, platform-neutral Mach-O parser.
+- `src/openbundle/platform.py` injects host measurements into the shared engine.
+- `web/analyzer-worker.mjs` owns browser orchestration and memory lifecycle.
+- `web/car-analysis.mjs` turns asset-catalog WASM output into compact evidence.
+- `web/cgbi.mjs` safely normalizes Apple-crushed loose PNGs for measurement.
+- `src/openbundle/templates/report.html` is the self-contained report UI.
+
+The browser extracts an artifact in Pyodide's temporary filesystem, processes
+catalog renditions sequentially, and passes compact measurements back to the
+Python engine. Full decoded pixels are released after each rendition. The
+standalone report retains bounded thumbnails for up to 96 image assets. Very
+large archives still require substantial memory while their compressed upload,
+expanded app, and transient WASM image buffers coexist, so the page warns
+before opening an archive over 500 MB and rejects archives over 700 MB.
+
+## Asset-catalog accuracy
+
+The CAR parser is vendored at an exact upstream commit and patched to expose
+physical rendition sizes and opacity. Its license, pin, patch, and rebuild
+instructions live under `vendor/car-parser/`; the deployable WASM runtime lives
+under `web/vendor/car-parser/`.
+
+Compiled asset catalogs contain several Apple-specific codecs. OpenBundle
+records supported/unsupported output counts and decode failures in the report.
+An unsupported rendition never becomes a claimed duplicate or image saving.
+
+Loose Apple CgBI PNGs are normalized in the worker by a bounded decoder before
+measurement. It validates chunk CRCs and dimensions, supports only known 8-bit
+RGB/RGBA non-interlaced variants, and fails closed on malformed input.
+
+HEIC is used only when the current browser actually returns HEIC bytes. Opaque
+images can use a measured JPEG quality-85 fallback; transparent images are not
+silently flattened. Full transparent-image parity will require a reviewed,
+alpha-capable HEIC WASM encoder.
+
+## Binary checks
+
+Symbol stripping and exported-symbol analysis do not shell out. The parser
+handles thin and fat binaries, both `nlist` layouts, `LC_DYSYMTAB`, modern
+`LC_DYLD_EXPORTS_TRIE`, and legacy `LC_DYLD_INFO(_ONLY)` export tries with
+strict range and traversal limits.
+
+The two findings are intentionally separate:
+
+- `strip-symbols` estimates removable local, debug, and eligible Swift symbol
+  records plus their referenced string-table bytes. Matching dSYMs must be
+  generated and uploaded before stripping.
+- `exported-symbols` estimates export-trie and external-symbol metadata that a
+  reviewed `EXPORTED_SYMBOLS_FILE` may remove. It preserves `_main` in its model,
+  calls out `__mh_execute_header`/Crashlytics, and warns about `dlsym` and plug-in
+  entry points.
+
+The Architecture view resolves load-command consumers but does not invent a
+static-linking saving. Predicting dead stripping requires the original static
+archive, link map, or dSYM; an IPA alone cannot reconstruct linker object
+boundaries safely.
+
+See Emerge's original explanations for the build-setting context:
+
+- [Strip binary symbols](https://docs.emergetools.com/docs/strip-binary-symbols)
+- [Exported-symbol metadata](https://docs.emergetools.com/docs/export-symbols-metadata)
+- [Remove duplicate files](https://docs.emergetools.com/docs/remove-duplicates)
+- [Optimize images](https://docs.emergetools.com/docs/optimize-images)
 
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 PYTHONPATH=src python3 -m py_compile src/openbundle/*.py
+node --check web/app.js
+node --check web/analyzer-worker.mjs
+node --check web/car-analysis.mjs
+python3 scripts/build_web.py
 ```
 
-The analyzer uses only the Python standard library. Apple tools are optional:
-without `assetutil`, `sips`, or `strip`, the base Size Lens and the remaining
-checks still work and the report records the missing capability.
+To rebuild the vendored CAR runtime, install Rust, `wasm-pack`, and
+`wasm-opt`, then run:
+
+```bash
+scripts/build_car_wasm.sh
+```
+
+The six local test IPAs and generated browser reports belong in `ipas/` and
+`exports/`; both directories are ignored by Git.
+
+## Privacy and runtime dependencies
+
+Bundle analysis stays in the tab. The Pyodide runtime and asset-catalog decoder
+are pinned and self-hosted; selected files never reach third-party code. The
+landing page still loads its typefaces from Google Fonts. Downloaded reports
+contain their CSS and JavaScript inline and need no server to remain
+interactive.
+
+OpenBundle is MIT licensed. The vendored CAR parser retains its upstream MIT
+notice, and the self-hosted Pyodide runtime retains its MPL-2.0 notice, in every
+built static distribution.
+
+OpenBundle is an independent project and is not affiliated with or endorsed by
+Emerge Tools or Sentry.

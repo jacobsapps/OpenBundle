@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Analyze your own iOS app or a competitor's IPA locally in your browser.">
+    <meta name="theme-color" content="#292524">
+    <title>OpenBundle — iOS bundle analysis</title>
+    <link rel="icon" type="image/png" href="./tavern-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700&family=Spectral:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./app.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#analyzer">Skip to analyzer</a>
+    <header class="site-header" id="site-header">
+      <div class="publication-chrome">
+        <div class="header-blur" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="publication-bar">
+          <a class="publication-mark" href="https://jacobstechtavern.com" target="_blank" rel="noopener noreferrer" aria-label="Jacob's Tech Tavern home">
+            <img class="publication-logo" src="./tavern-logo.png" alt="" width="48" height="48">
+          </a>
+          <a class="publication-brand" href="https://jacobstechtavern.com" target="_blank" rel="noopener noreferrer">Jacob&rsquo;s Tech Tavern</a>
+          <a class="source-button" href="https://github.com/jacobsapps/OpenBundle" target="_blank" rel="noopener noreferrer">Open source</a>
+        </div>
+        <nav class="publication-nav" aria-label="Publication">
+          <div class="publication-nav-track">
+            <a href="https://jacobstechtavern.com" target="_blank" rel="noopener noreferrer">Home</a>
+            <a href="https://roadmap.jacobstechtavern.com" target="_blank" rel="noopener noreferrer">🗺️ Start Here!</a>
+            <a href="https://jacobstechtavern.com/t/elite-hacks" target="_blank" rel="noopener noreferrer">🌟 Elite Hacks</a>
+            <a href="https://jacobstechtavern.com/t/ai" target="_blank" rel="noopener noreferrer">🤖 AI</a>
+            <a href="https://jacobstechtavern.com/t/concurrency" target="_blank" rel="noopener noreferrer">🧵 Concurrency</a>
+            <a href="https://jacobstechtavern.com/t/swift-internals" target="_blank" rel="noopener noreferrer">🛠️ Swift Internals</a>
+            <a href="https://jacobstechtavern.com/t/performance" target="_blank" rel="noopener noreferrer">🚀 Performance</a>
+            <a href="https://jacobstechtavern.com/t/swiftui" target="_blank" rel="noopener noreferrer">🎨 SwiftUI</a>
+            <span aria-current="page">📦 OpenBundle</span>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main class="shell">
+      <div class="landing" id="landing">
+        <header class="hero">
+          <h1>See what&rsquo;s making an <em>iOS app heavy.</em></h1>
+          <p class="lede">
+            Investigate your own app or a competitor&rsquo;s IPA. Analysis runs locally
+            in your browser.
+          </p>
+        </header>
+
+        <section class="analyzer" id="analyzer">
+          <input id="artifact-input" type="file" accept=".ipa,.zip" hidden>
+          <button class="drop-zone" id="drop-zone" type="button">
+            <span class="drop-icon" aria-hidden="true">↓</span>
+            <strong>Choose an IPA or ZIP</strong>
+            <span>or drag it here</span>
+          </button>
+          <a class="ipa-help" href="https://blog.jacobstechtavern.com/p/impress-at-job-interviews-by-decompiling" target="_blank" rel="noopener noreferrer">How to get an IPA</a>
+
+          <div class="status" id="status" role="status" aria-live="polite" hidden>
+            <span id="status-text"></span>
+          </div>
+        </section>
+      </div>
+
+      <section class="local-library" id="analysis-library" aria-labelledby="library-title">
+        <header class="library-head">
+          <div>
+            <h2 id="library-title">Recent analyses</h2>
+            <p>Saved in this browser. IPA files are never stored.</p>
+          </div>
+          <div class="library-head-actions">
+            <input id="report-import-input" type="file" accept=".json,.html,.htm,application/json,text/html" hidden>
+            <button id="import-report" type="button">Import report</button>
+          </div>
+        </header>
+        <div class="compare-prompt" id="compare-prompt" hidden>
+          <strong id="compare-prompt-title"></strong>
+          <span>Choose another saved analysis, import a report, or analyze an IPA.</span>
+          <div>
+            <button id="compare-analyze" type="button">Analyze IPA</button>
+            <button id="compare-import" type="button">Import report</button>
+            <button id="compare-cancel" type="button">Cancel</button>
+          </div>
+        </div>
+        <p class="library-message" id="library-message" role="status" aria-live="polite" hidden></p>
+        <div class="library-list" id="library-list"></div>
+      </section>
+
+      <section class="comparison" id="comparison" aria-labelledby="comparison-title" hidden>
+        <header class="comparison-head">
+          <div>
+            <button class="back-link" id="comparison-back" type="button">← Recent analyses</button>
+            <h2 id="comparison-title">Comparison</h2>
+            <p id="comparison-subtitle"></p>
+          </div>
+          <div class="comparison-actions">
+            <button id="comparison-open-before" type="button">Open before</button>
+            <button id="comparison-open-after" type="button">Open after</button>
+            <button id="comparison-swap" type="button">Swap</button>
+          </div>
+        </header>
+        <div id="comparison-content"></div>
+      </section>
+
+      <section class="result" id="result" hidden>
+        <div class="result-bar">
+          <div class="actions">
+            <button id="analyze-another" type="button">Analyze another</button>
+            <button class="primary" id="download-report" type="button">Download report</button>
+          </div>
+        </div>
+        <iframe
+          id="report-frame"
+          title="OpenBundle analysis report"
+          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+        ></iframe>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

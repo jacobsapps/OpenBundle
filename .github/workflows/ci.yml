@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-build-web:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test
+        run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: Check browser JavaScript
+        run: |
+          node --check web/app.js
+          node --check web/analyzer-worker.mjs
+          node --check web/car-analysis.mjs
+          node --check web/cgbi.mjs
+          node --check web/analysis-library.mjs
+          node --check web/analysis-compare.mjs
+          node --check scripts/smoke_web.mjs
+          node --check scripts/smoke_library.mjs
+          node --test tests/test_analysis_library.mjs
+          node --test tests/test_car_analysis.mjs
+          node --test tests/test_cgbi.mjs
+          python3 scripts/vendor_pyodide.py --check
+      - name: Build browser host
+        run: python3 scripts/build_web.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openbundle-web
+          path: dist/web

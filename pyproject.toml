@@ -1,13 +1,10 @@
 [project]
 name = "openbundle"
 version = "0.1.0"
-description = "Private, local iOS bundle size analysis with an interactive circle-packed Size Lens"
+description = "Private, browser-local iOS bundle size analysis with an interactive treemap"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "OpenBundle contributors" }]
-
-[project.scripts]
-openbundle = "openbundle.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

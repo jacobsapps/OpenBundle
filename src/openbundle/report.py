@@ -2,24 +2,30 @@
 
 from __future__ import annotations
 
+from importlib.resources import files
 from pathlib import Path
 import json
 
 
-TEMPLATE_PATH = Path(__file__).with_name("templates") / "report.html"
+def render_report_html(data: dict) -> str:
+    """Return the complete report document without assuming a host filesystem."""
+
+    template = (
+        files("openbundle")
+        .joinpath("templates")
+        .joinpath("report.html")
+        .read_text(encoding="utf-8")
+    )
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    # Prevent a malicious bundle filename from ending the JSON script tag.
+    payload = payload.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return template.replace("__REPORT_DATA__", payload)
 
 
 def render_report(data: dict, output_path: str | Path) -> Path:
     output = Path(output_path).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    # Prevent a malicious bundle filename from ending the JSON script tag.
-    payload = payload.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    output.write_text(
-        template.replace("__REPORT_DATA__", payload),
-        encoding="utf-8",
-    )
+    output.write_text(render_report_html(data), encoding="utf-8")
     return output
 
 
@@ -31,4 +37,3 @@ def write_json(data: dict, output_path: str | Path) -> Path:
         encoding="utf-8",
     )
     return output
-
