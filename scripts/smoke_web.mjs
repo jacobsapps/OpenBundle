@@ -86,6 +86,11 @@ try {
   await command("Page.enable");
   await command("DOM.enable");
   await command("Runtime.enable");
+  if (process.env.REDUCED_MOTION === "1") {
+    await command("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+    });
+  }
   await command("Page.navigate", { url: siteURL });
 
   let inputReady = false;
@@ -446,6 +451,7 @@ try {
           const frames = animation?.effect?.getKeyframes?.() || [];
           return JSON.stringify({
             available:true,
+            reducedMotion:matchMedia("(prefers-reduced-motion: reduce)").matches,
             outlineMatches,
             outlineVisible,
             outlinePointerEvents,
@@ -473,15 +479,18 @@ try {
       })
     ).result.value,
   );
+  const animationFailed = mapInteraction.reducedMotion
+    ? mapInteraction.animationStarted || mapInteraction.animatingClass
+    : !mapInteraction.animationStarted ||
+      !mapInteraction.animationUsesClip ||
+      mapInteraction.animationStretches ||
+      !mapInteraction.animatingClass;
   if (
     mapInteraction.available &&
     (!mapInteraction.outlineMatches ||
       !mapInteraction.outlineVisible ||
       mapInteraction.outlinePointerEvents !== "none" ||
-      !mapInteraction.animationStarted ||
-      !mapInteraction.animationUsesClip ||
-      mapInteraction.animationStretches ||
-      !mapInteraction.animatingClass ||
+      animationFailed ||
       mapInteractionSettled.animationCount !== 0 ||
       mapInteractionSettled.animatingClass ||
       !mapInteractionSettled.backVisible ||
