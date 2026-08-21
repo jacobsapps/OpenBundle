@@ -132,12 +132,58 @@ try {
   await command("Page.enable");
   await command("DOM.enable");
   await command("Runtime.enable");
+  await command("Page.addScriptToEvaluateOnNewDocument", {
+    source: `(() => {
+      const NativeWorker = window.Worker;
+      const stats = window.__openbundleWorkerStats = { created: 0, terminated: 0 };
+      window.Worker = new Proxy(NativeWorker, {
+        construct(Target, argumentsList) {
+          const instance = Reflect.construct(Target, argumentsList);
+          const nativeTerminate = instance.terminate.bind(instance);
+          let terminated = false;
+          Object.defineProperty(instance, "terminate", {
+            configurable: true,
+            value() {
+              if (!terminated) {
+                terminated = true;
+                stats.terminated += 1;
+              }
+              return nativeTerminate();
+            },
+          });
+          stats.created += 1;
+          window.__openbundleLastWorker = instance;
+          return instance;
+        },
+      });
+    })()`,
+  });
   await command("Page.navigate", { url: siteURL });
   await waitFor(
     'document.documentElement.dataset.openbundleReady === "true"',
     15_000,
     "the browser host",
   );
+  await waitFor(
+    'document.querySelector(".library-empty")?.textContent === "No saved analyses."',
+    15_000,
+    "the empty analysis library",
+  );
+  const initialWorkerState = JSON.parse(
+    await evaluate(`JSON.stringify({
+      ...window.__openbundleWorkerStats,
+      cancelHidden: document.querySelector("#cancel-analysis").hidden
+    })`),
+  );
+  if (
+    initialWorkerState.created !== 0 ||
+    initialWorkerState.terminated !== 0 ||
+    !initialWorkerState.cancelHidden
+  ) {
+    throw new Error(
+      `Analyzer worker was not lazy at startup: ${JSON.stringify(initialWorkerState)}`,
+    );
+  }
 
   await setFile("#report-import-input", jsonPath);
   await waitFor(
@@ -162,6 +208,39 @@ try {
     30_000,
     "IndexedDB history after reload",
   );
+  const historyActionsLabeled = await evaluate(`[
+    ...document.querySelectorAll(".library-row")
+  ].every(row => {
+    const appName = row.querySelector(".library-identity strong").textContent;
+    return [...row.querySelectorAll("button[data-action]")].every(button =>
+      button.getAttribute("aria-label")?.includes(appName)
+    );
+  })`);
+  if (!historyActionsLabeled) {
+    throw new Error("History actions do not have app-specific accessible names.");
+  }
+
+  await evaluate(`(() => {
+    const button = document.querySelector(".library-row button[data-action=compare]");
+    window.__openbundleFocusAnalysisID = button.dataset.analysisId;
+    button.focus();
+    button.click();
+  })()`);
+  await waitFor(
+    'document.querySelector(".library-row.is-baseline") && document.activeElement?.dataset.analysisId === window.__openbundleFocusAnalysisID && document.activeElement?.dataset.action === "compare"',
+    15_000,
+    "comparison selection focus restoration",
+  );
+  await evaluate(`(() => {
+    const button = document.querySelector("#compare-cancel");
+    button.focus();
+    button.click();
+  })()`);
+  await waitFor(
+    'document.querySelector("#compare-prompt").hidden && document.activeElement?.dataset.analysisId === window.__openbundleFocusAnalysisID && document.activeElement?.dataset.action === "compare"',
+    15_000,
+    "comparison cancellation focus restoration",
+  );
   await screenshot("LIBRARY_SCREENSHOT_PATH");
 
   await evaluate(
@@ -172,6 +251,21 @@ try {
     180_000,
     "a saved report to re-render",
   );
+  const renderedWorkerState = JSON.parse(
+    await evaluate(`JSON.stringify({
+      ...window.__openbundleWorkerStats,
+      cancelHidden: document.querySelector("#cancel-analysis").hidden
+    })`),
+  );
+  if (
+    renderedWorkerState.created !== 1 ||
+    renderedWorkerState.terminated !== 1 ||
+    !renderedWorkerState.cancelHidden
+  ) {
+    throw new Error(
+      `Saved-report worker was not disposed: ${JSON.stringify(renderedWorkerState)}`,
+    );
+  }
 
   await evaluate(`(() => {
     const frame = document.querySelector("#report-frame");
@@ -189,6 +283,32 @@ try {
   );
   await setFile("#artifact-input", ipaPath);
   await waitFor(
+    'window.__openbundleWorkerStats.created === 2 && !document.querySelector("#cancel-analysis").hidden',
+    180_000,
+    "an IPA analysis worker",
+  );
+  await evaluate(
+    'window.__openbundleLastWorker.dispatchEvent(new MessageEvent("messageerror"))',
+  );
+  await waitFor(
+    'window.__openbundleWorkerStats.terminated === 2 && document.querySelector("#cancel-analysis").hidden && !document.querySelector("#drop-zone").disabled && !document.querySelector("#artifact-input").value && document.querySelector("#status").classList.contains("is-error")',
+    15_000,
+    "worker message-error recovery",
+  );
+  await setFile("#artifact-input", ipaPath);
+  await waitFor(
+    'window.__openbundleWorkerStats.created === 3 && !document.querySelector("#cancel-analysis").hidden',
+    180_000,
+    "a cancelable IPA analysis",
+  );
+  await evaluate('document.querySelector("#cancel-analysis").click()');
+  await waitFor(
+    'window.__openbundleWorkerStats.terminated === 3 && document.querySelector("#cancel-analysis").hidden && document.querySelector("#drop-zone") === document.activeElement && !document.querySelector("#drop-zone").disabled && !document.querySelector("#artifact-input").value && document.querySelector("#status").hidden',
+    15_000,
+    "analysis cancellation cleanup",
+  );
+  await setFile("#artifact-input", ipaPath);
+  await waitFor(
     '!document.querySelector("#comparison").hidden || document.querySelector("#status").classList.contains("is-error")',
     600_000,
     "IPA analysis comparison",
@@ -197,6 +317,23 @@ try {
     'document.querySelector("#status").classList.contains("is-error") ? document.querySelector("#status-text").textContent : ""',
   );
   if (analysisError) throw new Error(analysisError);
+  const analysisWorkerState = JSON.parse(
+    await evaluate(`JSON.stringify({
+      ...window.__openbundleWorkerStats,
+      cancelHidden: document.querySelector("#cancel-analysis").hidden,
+      dropDisabled: document.querySelector("#drop-zone").disabled
+    })`),
+  );
+  if (
+    analysisWorkerState.created !== 4 ||
+    analysisWorkerState.terminated !== 4 ||
+    !analysisWorkerState.cancelHidden ||
+    analysisWorkerState.dropDisabled
+  ) {
+    throw new Error(
+      `Completed-analysis worker was not disposed: ${JSON.stringify(analysisWorkerState)}`,
+    );
+  }
 
   const comparisonState = JSON.parse(
     await evaluate(`JSON.stringify({
@@ -221,6 +358,31 @@ try {
     'document.querySelector("#comparison").hidden && document.querySelectorAll(".library-row").length >= 3',
     15_000,
     "the updated analysis library",
+  );
+  await evaluate(
+    'document.querySelector(".library-row button[data-action=open]").click()',
+  );
+  await waitFor(
+    '!document.querySelector("#result").hidden && document.querySelector("#report-frame").srcdoc.length > 50000',
+    180_000,
+    "saved rendering after completed analysis",
+  );
+  const recreatedWorkerState = JSON.parse(
+    await evaluate("JSON.stringify(window.__openbundleWorkerStats)"),
+  );
+  if (
+    recreatedWorkerState.created !== 5 ||
+    recreatedWorkerState.terminated !== 5
+  ) {
+    throw new Error(
+      `Analyzer worker was not recreated and disposed: ${JSON.stringify(recreatedWorkerState)}`,
+    );
+  }
+  await evaluate('document.querySelector("#analyze-another").click()');
+  await waitFor(
+    '!document.body.classList.contains("has-result") && document.querySelectorAll(".library-row").length >= 3',
+    30_000,
+    "the library after re-rendering a saved analysis",
   );
   await evaluate(
     'document.querySelectorAll(".library-row button[data-action=compare]")[0].click()',

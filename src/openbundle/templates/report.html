@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>OpenBundle report</title>
   <style>
     :root {
@@ -61,10 +62,27 @@
       content: "";
     }
     button { color: inherit; font: inherit; }
-    button:focus-visible, [tabindex]:focus-visible {
+    button:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
       outline: 2px solid var(--orange);
       outline-offset: 2px;
     }
+    .skip-link {
+      position: fixed;
+      z-index: 200;
+      top: 10px;
+      left: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: var(--ink);
+      background: var(--panel-raised);
+      box-shadow: var(--shadow);
+      font-size: 11px;
+      font-weight: 780;
+      text-decoration: none;
+      transform: translateY(calc(-100% - 14px));
+      transition: transform 120ms ease;
+    }
+    .skip-link:focus { transform: translateY(0); }
     .sr-only {
       position: absolute;
       width: 1px;
@@ -956,11 +974,14 @@
       padding-bottom: 34px;
     }
     .binaries-table {
-      overflow: hidden;
+      overflow-x: auto;
+      overflow-y: hidden;
+      overscroll-behavior-inline: contain;
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--panel);
       box-shadow: 0 12px 32px rgba(0,0,0,.1);
+      -webkit-overflow-scrolling: touch;
     }
     .binary-row {
       display: grid;
@@ -977,7 +998,9 @@
       color: var(--faint);
       background: var(--panel-soft);
     }
+    .binary-header [role="columnheader"] { min-width: 0; }
     .binary-header button {
+      width: 100%;
       min-width: 0;
       padding: 3px 0;
       overflow: hidden;
@@ -995,10 +1018,12 @@
     }
     .binary-header button:hover,
     .binary-header button.active { color: var(--ink); }
-    .binary-header button:last-child { text-align: right; }
+    .binary-header [role="columnheader"]:last-child button { text-align: right; }
     .binary-item { border-top: 1px solid var(--line); }
     .binary-item > summary { cursor: pointer; list-style: none; }
     .binary-item > summary::-webkit-details-marker { display: none; }
+    .binary-item > summary:focus-visible,
+    .image-asset > summary:focus-visible { outline-offset: -3px; }
     .binary-item > summary:hover { background: rgba(255,255,255,.025); }
     .binary-item[open] > summary { background: var(--panel-soft); }
     .binary-primary,
@@ -1053,6 +1078,7 @@
       border-top: 1px solid var(--line);
       background: rgba(0,0,0,.12);
     }
+    .binary-details-cell { min-width: 0; }
     .binary-architecture { min-width: 0; }
     .binary-architecture-head {
       display: flex;
@@ -1520,6 +1546,7 @@
       .side-nav .nav-icon { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
+      .skip-link { transition: none; }
       .view { animation: none; }
       .treemap-hover-frame { transition: none; }
       .recommendation-chevron,
@@ -1531,6 +1558,7 @@
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#report-workspace">Skip to report</a>
   <div class="app-shell">
     <aside class="rail">
       <div class="rail-brand">
@@ -1578,7 +1606,7 @@
       <section class="rail-metrics" id="rail-metrics"></section>
     </aside>
 
-    <main class="workspace">
+    <main class="workspace" id="report-workspace" tabindex="-1">
       <section class="view active" id="view-map">
         <header class="view-head"><h2>Bundle map</h2></header>
         <div class="map-layout">
@@ -2468,14 +2496,17 @@
     function binarySortButton(title,key) {
       const active = binarySort.key === key;
       const indicator = active ? (binarySort.direction > 0 ? " ↑" : " ↓") : "";
-      return `<button type="button" data-binary-sort="${key}" class="${active ? "active" : ""}">${esc(title)}${indicator}</button>`;
+      const direction = binarySort.direction > 0 ? "ascending" : "descending";
+      const sortLabel = active ? `Sort by ${title}, currently ${direction}` : `Sort by ${title}`;
+      return `<div role="columnheader"${active ? ` aria-sort="${direction}"` : ""}><button type="button" data-binary-sort="${key}" class="${active ? "active" : ""}" aria-label="${esc(sortLabel)}">${esc(title)}<span aria-hidden="true">${indicator}</span></button></div>`;
     }
     function binaryVersionCell(binary) {
       const platforms = (binary.platforms || []).join(", ") || "—";
       const details = [];
       if ((binary.minimumOSVersions || []).length) details.push(`Min ${binary.minimumOSVersions.join(", ")}`);
       if ((binary.sdkVersions || []).length) details.push(`SDK ${binary.sdkVersions.join(", ")}`);
-      return `<div class="binary-cell binary-os"><strong>${esc(platforms)}</strong>${details.length ? `<small>${esc(details.join(", "))}</small>` : ""}</div>`;
+      const label = `OS / SDK: ${[platforms,...details].join(", ")}`;
+      return `<div class="binary-cell binary-os" role="cell" aria-label="${esc(label)}"><strong>${esc(platforms)}</strong>${details.length ? `<small>${esc(details.join(", "))}</small>` : ""}</div>`;
     }
     function binarySegmentColor(name,path) {
       return nodeColor({name,path,category:"binary_section"});
@@ -2510,7 +2541,7 @@
         </section>`;
       }).join("")}</div>`;
     }
-    function renderBinaries() {
+    function renderBinaries({focusSortKey = ""} = {}) {
       const holder = document.getElementById("binaries-stack");
       document.getElementById("binary-count").textContent = `${binaryItems.length.toLocaleString()} binaries`;
       const rows = sortedBinaries().map((binary,index) => {
@@ -2522,22 +2553,25 @@
           ...(binary.encrypted ? ["Encrypted"] : [])
         ].filter(Boolean).join(", ");
         const ownerDetail = binary.owner !== binary.target ? architectureDisplayName(binary.owner) : binary.targetKind;
-        return `<details class="binary-item" data-binary-index="${index}">
-          <summary class="binary-row">
-            <div class="binary-primary"><strong title="${esc(binary.path)}">${esc(architectureDisplayName(binary.name))}</strong><span title="${esc(binary.path)}">${esc(binary.path)}</span><span class="binary-mobile-meta">${esc(mobileMetadata)}</span></div>
-            <div class="binary-owner"><strong title="${esc(binary.targetPath || "Main target")}">${esc(binary.target || "Main target")}</strong><span title="${esc(binary.ownerPath || "")}">${esc(ownerDetail || "Target")}</span></div>
-            <div class="binary-cell binary-architecture-cell"><strong>${esc(architectureNames)}</strong><small>${esc(binary.parsed === false ? "Unreadable" : binaryFileType(binary.fileType))}</small></div>
+        const targetLabel = `${architectureDisplayName(binary.target || "Main target")}, ${ownerDetail || "Target"}`;
+        const architectureLabel = `${architectureNames}, ${binary.parsed === false ? "Unreadable" : binaryFileType(binary.fileType)}`;
+        const detailsID = `binary-details-${index}`;
+        return `<details class="binary-item" data-binary-index="${index}" role="rowgroup">
+          <summary class="binary-row" role="row" aria-expanded="false" aria-controls="${detailsID}">
+            <div class="binary-primary" role="rowheader"><strong title="${esc(binary.path)}">${esc(architectureDisplayName(binary.name))}</strong><span title="${esc(binary.path)}">${esc(binary.path)}</span><span class="binary-mobile-meta">${esc(mobileMetadata)}</span></div>
+            <div class="binary-owner" role="cell" aria-label="${esc(`Target / owner: ${targetLabel}`)}"><strong title="${esc(binary.targetPath || "Main target")}">${esc(binary.target || "Main target")}</strong><span title="${esc(binary.ownerPath || "")}">${esc(ownerDetail || "Target")}</span></div>
+            <div class="binary-cell binary-architecture-cell" role="cell" aria-label="${esc(`Architecture: ${architectureLabel}`)}"><strong>${esc(architectureNames)}</strong><small>${esc(binary.parsed === false ? "Unreadable" : binaryFileType(binary.fileType))}</small></div>
             ${binaryVersionCell(binary)}
-            <div class="binary-cell binary-encryption">${binary.encrypted ? `<span class="binary-encrypted">Encrypted</span>` : "None"}</div>
-            <div class="binary-cell opportunity binary-strip"><strong>${Number(binary.stripSymbolsBytes || 0) >= 100000 ? `~${fmt(binary.stripSymbolsBytes)}` : "—"}</strong><small>Strip symbols</small></div>
-            <div class="binary-cell opportunity binary-exports"><strong>${Number(binary.exportedSymbolMetadataBytes || 0) >= 100000 ? `~${fmt(binary.exportedSymbolMetadataBytes)}` : "—"}</strong><small>Export metadata</small></div>
-            <div class="binary-cell number binary-size"><strong>${fmt(binary.size)}</strong></div>
+            <div class="binary-cell binary-encryption" role="cell" aria-label="Encryption: ${binary.encrypted ? "Encrypted" : "None"}">${binary.encrypted ? `<span class="binary-encrypted">Encrypted</span>` : "None"}</div>
+            <div class="binary-cell opportunity binary-strip" role="cell" aria-label="Strip symbols: ${Number(binary.stripSymbolsBytes || 0) >= 100000 ? `approximately ${fmt(binary.stripSymbolsBytes)}` : "none"}"><strong>${Number(binary.stripSymbolsBytes || 0) >= 100000 ? `~${fmt(binary.stripSymbolsBytes)}` : "—"}</strong><small>Strip symbols</small></div>
+            <div class="binary-cell opportunity binary-exports" role="cell" aria-label="Export metadata: ${Number(binary.exportedSymbolMetadataBytes || 0) >= 100000 ? `approximately ${fmt(binary.exportedSymbolMetadataBytes)}` : "none"}"><strong>${Number(binary.exportedSymbolMetadataBytes || 0) >= 100000 ? `~${fmt(binary.exportedSymbolMetadataBytes)}` : "—"}</strong><small>Export metadata</small></div>
+            <div class="binary-cell number binary-size" role="cell" aria-label="Unpacked: ${fmt(binary.size)}"><strong>${fmt(binary.size)}</strong></div>
           </summary>
-          <div class="binary-details"></div>
+          <div class="binary-details" id="${detailsID}" role="row"><div class="binary-details-cell" role="cell" aria-colspan="8"></div></div>
         </details>`;
       }).join("");
-      holder.innerHTML = `<div class="binaries-table">
-        <div class="binary-row binary-header">
+      holder.innerHTML = `<div class="binaries-table" role="table" aria-label="Binaries" aria-colcount="8" aria-rowcount="${binaryItems.length + 1}">
+        <div class="binary-row binary-header" role="row">
           ${binarySortButton("Binary","name")}
           ${binarySortButton("Target / owner","owner")}
           ${binarySortButton("Arch","architecture")}
@@ -2547,7 +2581,7 @@
           ${binarySortButton("Export metadata","exportedSymbolMetadataBytes")}
           ${binarySortButton("Unpacked","size")}
         </div>
-        ${rows || `<div class="empty-state">No binaries.</div>`}
+        ${rows || `<div class="empty-state" role="row"><span role="cell" aria-colspan="8">No binaries.</span></div>`}
       </div>`;
       holder.querySelectorAll("[data-binary-sort]").forEach(button => button.addEventListener("click",() => {
         const key = button.dataset.binarySort;
@@ -2556,17 +2590,19 @@
           binarySort.key = key;
           binarySort.direction = ["name","owner","architecture","os"].includes(key) ? 1 : -1;
         }
-        renderBinaries();
+        renderBinaries({focusSortKey:key});
       }));
       const ordered = sortedBinaries();
       holder.querySelectorAll(".binary-item[data-binary-index]").forEach(element => element.addEventListener("toggle",() => {
+        element.querySelector(":scope > summary")?.setAttribute("aria-expanded",String(element.open));
         if (!element.open || element.dataset.rendered === "true") return;
         const binary = ordered[Number(element.dataset.binaryIndex)];
-        const details = element.querySelector(".binary-details");
+        const details = element.querySelector(".binary-details-cell");
         if (!binary || !details) return;
         details.innerHTML = binaryComposition(binary);
         element.dataset.rendered = "true";
       }));
+      if (focusSortKey) holder.querySelector(`[data-binary-sort="${focusSortKey}"]`)?.focus();
     }
 
     function capabilitiesChipGroup(title,values) {
@@ -2678,26 +2714,26 @@
       catch (_) { return locale; }
     }
     function localeNumber(value,options = {}) {
-      if (value == null) return `<span class="locales-number">—</span>`;
+      if (value == null) return `<span class="locales-number" role="cell" aria-label="${esc(`${options.label || "Value"}: unavailable`)}">—</span>`;
       const number = Number(value);
       const className = options.alert && number > 0 ? "locales-number alert" : "locales-number";
-      return `<span class="${className}"${options.title ? ` title="${esc(options.title)}"` : ""}>${number.toLocaleString()}</span>`;
+      return `<span class="${className}" role="cell" aria-label="${esc(`${options.label || "Value"}: ${number.toLocaleString()}`)}"${options.title ? ` title="${esc(options.title)}"` : ""}>${number.toLocaleString()}</span>`;
     }
-    function renderLocaleTable(rows) {
-      return `<div class="locales-table">
-        <div class="locales-row locales-header"><span>Locale</span><span>Bundle</span><span>Files</span><span>Keys</span><span>Missing</span><span>Unchanged</span><span>Size</span></div>
+    function renderLocaleTable(rows,label = "Locales") {
+      return `<div class="locales-table" role="table" aria-label="${esc(label)}" aria-colcount="7" aria-rowcount="${rows.length + 1}">
+        <div class="locales-row locales-header" role="row"><span role="columnheader">Locale</span><span role="columnheader">Bundle</span><span role="columnheader">Files</span><span role="columnheader">Keys</span><span role="columnheader">Missing</span><span role="columnheader">Unchanged</span><span role="columnheader">Size</span></div>
         ${rows.map(row => {
           const comparison = row.referenceLocale && row.referenceLocale !== row.locale ? `Compared with ${row.referenceLocale}` : "";
           const localeDetail = comparison ? `${row.locale} vs ${row.referenceLocale}` : row.locale;
           const bundleDetail = row.bundle !== row.target ? row.target : row.bundlePath === "." ? "Main target" : row.bundlePath;
-          return `<div class="locales-row">
-            <div class="locales-primary"><strong>${esc(localeLabel(row.locale))}</strong><span>${esc(localeDetail)}</span></div>
-            <div class="locales-bundle"><strong title="${esc(row.bundlePath)}">${esc(row.bundle)}</strong><span>${esc(bundleDetail)}</span></div>
-            ${localeNumber(row.fileCount)}
-            ${localeNumber(row.parsedFileCount ? row.keyCount : null)}
-            ${localeNumber(row.missingKeyCount,{alert:true,title:comparison})}
-            ${localeNumber(row.identicalValueCount,{title:comparison})}
-            <span class="locales-number">${fmt(row.size)}</span>
+          return `<div class="locales-row" role="row">
+            <div class="locales-primary" role="rowheader"><strong>${esc(localeLabel(row.locale))}</strong><span>${esc(localeDetail)}</span></div>
+            <div class="locales-bundle" role="cell" aria-label="${esc(`Bundle: ${row.bundle}, ${bundleDetail}`)}"><strong title="${esc(row.bundlePath)}">${esc(row.bundle)}</strong><span>${esc(bundleDetail)}</span></div>
+            ${localeNumber(row.fileCount,{label:"Files"})}
+            ${localeNumber(row.parsedFileCount ? row.keyCount : null,{label:"Keys"})}
+            ${localeNumber(row.missingKeyCount,{alert:true,title:comparison,label:"Missing"})}
+            ${localeNumber(row.identicalValueCount,{title:comparison,label:"Unchanged"})}
+            <span class="locales-number" role="cell" aria-label="Size: ${fmt(row.size)}">${fmt(row.size)}</span>
           </div>`;
         }).join("")}
       </div>`;
@@ -2705,7 +2741,7 @@
     function renderLocaleSection(title,rows,{grouped = false} = {}) {
       if (!rows.length) return "";
       const localeCount = new Set(rows.map(row => row.locale)).size;
-      let content = renderLocaleTable(rows);
+      let content = renderLocaleTable(rows,`${title} locales`);
       if (grouped) {
         const bundles = new Map();
         rows.forEach(row => {
@@ -2721,7 +2757,7 @@
               <div class="locales-bundle-summary"><strong>${esc(first.bundle)}</strong><span title="${esc(first.bundlePath)}">${esc(first.target)}</span></div>
               <div class="locales-bundle-stats"><span>${new Set(group.map(row => row.locale)).size.toLocaleString()} locales</span><strong>${fmt(groupSize)}</strong></div>
             </summary>
-            ${renderLocaleTable(group)}
+            ${renderLocaleTable(group,`${first.bundle} locales`)}
           </details>`;
         }).join("")}</div>`;
       }
@@ -2830,6 +2866,7 @@
         imageLimit = 200;
         renderImageSources();
         renderImageList();
+        [...document.querySelectorAll(".image-source")].find(item => item.dataset.source === selectedImageSource)?.focus();
       }));
     }
     function appendRenditionMetadata(holder,text,className = "") {
@@ -2875,7 +2912,7 @@
       });
       holder.replaceChildren(fragment);
     }
-    function renderImageList() {
+    function renderImageList({focusAssetIndex = -1} = {}) {
       const source = imageSources.find(item => item.id === selectedImageSource) || imageSources[0];
       const assets = source?.assets || [];
       const visibleAssets = assets.slice(0,imageLimit);
@@ -2894,8 +2931,8 @@
         const summary = `${visual}
           <div class="image-row-copy"><strong>${esc(asset.name)}</strong><span>${esc(details.join("  "))}</span></div>
           <div class="image-row-size"><strong>${fmt(asset.headlineSize)}</strong>${saving > 0 ? `<span>Save ${fmt(saving)}</span>` : ""}</div>`;
-        if (!asset.renditions.length) return `<div class="image-row" title="${esc(asset.path)}">${summary}</div>`;
-        return `<details class="image-asset" data-asset-index="${index}"><summary class="image-row" title="${esc(asset.path)}">${summary}</summary><div class="rendition-list"></div></details>`;
+        if (!asset.renditions.length) return `<div class="image-row" data-image-index="${index}" tabindex="-1" title="${esc(asset.path)}">${summary}</div>`;
+        return `<details class="image-asset" data-asset-index="${index}"><summary class="image-row" data-image-index="${index}" title="${esc(asset.path)}">${summary}</summary><div class="rendition-list"></div></details>`;
       }).join("") + (assets.length > imageLimit ? `<button class="show-more" id="show-more-images">Show more</button>` : "") || `<div class="empty-state">No images found.</div>`;
       list.querySelectorAll(".image-asset[data-asset-index]").forEach(element => element.addEventListener("toggle",() => {
         if (!element.open || element.dataset.renditionsRendered === "true") return;
@@ -2905,7 +2942,12 @@
         renderRenditions(holder,asset);
         element.dataset.renditionsRendered = "true";
       }));
-      document.getElementById("show-more-images")?.addEventListener("click",() => { imageLimit += 200; renderImageList(); });
+      document.getElementById("show-more-images")?.addEventListener("click",() => {
+        const firstNewIndex = visibleAssets.length;
+        imageLimit += 200;
+        renderImageList({focusAssetIndex:firstNewIndex});
+      });
+      if (focusAssetIndex >= 0) list.querySelector(`[data-image-index="${focusAssetIndex}"]`)?.focus();
     }
 
     renderRecommendations();

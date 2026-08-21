@@ -19,6 +19,7 @@ jobs:
         run: PYTHONPATH=src python3 -m unittest discover -s tests -v
       - name: Check browser JavaScript
         run: |
+          python3 -m py_compile scripts/make_smoke_ipa.py scripts/serve_web_smoke.py
           node --check web/app.js
           node --check web/analyzer-worker.mjs
           node --check web/car-analysis.mjs
@@ -33,6 +34,28 @@ jobs:
           python3 scripts/vendor_pyodide.py --check
       - name: Build browser host
         run: python3 scripts/build_web.py
+      - name: Smoke browser analyzer
+        run: |
+          python3 scripts/make_smoke_ipa.py "$RUNNER_TEMP/openbundle-smoke.ipa" \
+            --report-json "$RUNNER_TEMP/openbundle-smoke.json" \
+            --report-html "$RUNNER_TEMP/openbundle-smoke.html"
+          python3 scripts/serve_web_smoke.py --directory dist/web --port 8765 >"$RUNNER_TEMP/openbundle-server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:8765/ >/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          curl --fail --silent http://127.0.0.1:8765/ >/dev/null
+          EXPECT_INSIGHT_IDS=duplicates node scripts/smoke_web.mjs \
+            http://127.0.0.1:8765/ "$RUNNER_TEMP/openbundle-smoke.ipa"
+          node scripts/smoke_library.mjs \
+            http://127.0.0.1:8765/ \
+            "$RUNNER_TEMP/openbundle-smoke.json" \
+            "$RUNNER_TEMP/openbundle-smoke.html" \
+            "$RUNNER_TEMP/openbundle-smoke.ipa"
       - uses: actions/upload-artifact@v4
         with:
           name: openbundle-web

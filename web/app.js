@@ -13,6 +13,7 @@ const input = document.querySelector("#artifact-input");
 const dropZone = document.querySelector("#drop-zone");
 const status = document.querySelector("#status");
 const statusText = document.querySelector("#status-text");
+const cancelAnalysis = document.querySelector("#cancel-analysis");
 const analyzer = document.querySelector("#analyzer");
 const result = document.querySelector("#result");
 const reportFrame = document.querySelector("#report-frame");
@@ -37,9 +38,6 @@ const comparisonSwap = document.querySelector("#comparison-swap");
 const comparisonOpenBefore = document.querySelector("#comparison-open-before");
 const comparisonOpenAfter = document.querySelector("#comparison-open-after");
 
-const worker = new Worker(new URL("./analyzer-worker.mjs", import.meta.url), {
-  type: "module",
-});
 const MAX_BROWSER_ARCHIVE_BYTES = 700 * 1024 * 1024;
 
 let currentReport = "";
@@ -48,7 +46,10 @@ let currentAnalysis = null;
 let recentAnalyses = [];
 let baselineID = null;
 let comparisonPair = null;
+let worker = null;
 let workerOperation = "idle";
+let operationSequence = 0;
+let activeOperationID = 0;
 let renderRequestID = 0;
 const pendingRenders = new Map();
 
@@ -60,6 +61,7 @@ function setWorkerOperation(operation) {
   workerOperation = operation;
   const busy = workerBusy();
   dropZone.disabled = busy;
+  cancelAnalysis.hidden = operation !== "analyze";
   for (const button of [
     importReport,
     compareAnalyze,
@@ -72,6 +74,142 @@ function setWorkerOperation(operation) {
   libraryList
     .querySelectorAll("button[data-action]")
     .forEach((button) => (button.disabled = busy));
+}
+
+function beginWorkerOperation(operation) {
+  activeOperationID = ++operationSequence;
+  setWorkerOperation(operation);
+  return activeOperationID;
+}
+
+function finishWorkerOperation(operationID) {
+  if (activeOperationID !== operationID) return false;
+  activeOperationID = 0;
+  setWorkerOperation("idle");
+  return true;
+}
+
+function terminateWorker(target = worker) {
+  if (!target) return;
+  if (worker === target) worker = null;
+  target.terminate();
+}
+
+function resetWorkerOperation(target = worker) {
+  terminateWorker(target);
+  activeOperationID = 0;
+  pendingRenders.clear();
+  setWorkerOperation("idle");
+}
+
+function focusDropZone() {
+  window.requestAnimationFrame(() => dropZone.focus());
+}
+
+function failWorkerOperation(target, message) {
+  if (target && target !== worker) return;
+  const operation = workerOperation;
+  resetWorkerOperation(target);
+  const detail = message || "The browser analyzer stopped unexpectedly.";
+  if (operation === "render") {
+    setLibraryMessage(detail, "error");
+  } else {
+    input.value = "";
+    setStatus(detail, "error");
+  }
+}
+
+function handleWorkerMessage(target, { data }) {
+  if (target !== worker) return;
+  if (!data || typeof data !== "object") {
+    failWorkerOperation(
+      target,
+      "The browser analyzer returned an unreadable response.",
+    );
+    return;
+  }
+  if (data.type === "progress") {
+    if (workerOperation === "render") setLibraryMessage(data.message);
+    else if (workerOperation === "analyze") setStatus(data.message, "working");
+    return;
+  }
+  if (data.type === "rendered") {
+    if (workerOperation !== "render") return;
+    const record = pendingRenders.get(data.requestID);
+    if (!record) {
+      failWorkerOperation(
+        target,
+        "The saved report returned an unexpected response.",
+      );
+      return;
+    }
+    const operationID = activeOperationID;
+    pendingRenders.clear();
+    terminateWorker(target);
+    finishWorkerOperation(operationID);
+    setLibraryMessage("");
+    showReport(data.html, record);
+    return;
+  }
+  if (data.type === "render-error") {
+    if (workerOperation !== "render") return;
+    if (!pendingRenders.has(data.requestID)) {
+      failWorkerOperation(
+        target,
+        "The saved report returned an unexpected response.",
+      );
+      return;
+    }
+    resetWorkerOperation(target);
+    setLibraryMessage(
+      data.message || "The saved report could not be rendered.",
+      "error",
+    );
+    return;
+  }
+  if (data.type === "error") {
+    failWorkerOperation(target, data.message);
+    return;
+  }
+  if (data.type !== "result" || workerOperation !== "analyze") return;
+
+  const operationID = activeOperationID;
+  terminateWorker(target);
+  setWorkerOperation("saving");
+  setStatus("");
+  void handleAnalysisResult(data)
+    .catch((error) => {
+      input.value = "";
+      setStatus(error instanceof Error ? error.message : String(error), "error");
+      focusDropZone();
+    })
+    .finally(() => finishWorkerOperation(operationID));
+}
+
+function createWorker() {
+  if (worker) return worker;
+  const created = new Worker(
+    new URL("./analyzer-worker.mjs", import.meta.url),
+    { type: "module" },
+  );
+  worker = created;
+  created.addEventListener("message", (event) => {
+    handleWorkerMessage(created, event);
+  });
+  created.addEventListener("error", (event) => {
+    event.preventDefault();
+    failWorkerOperation(
+      created,
+      event.message || "The browser analyzer failed to start.",
+    );
+  });
+  created.addEventListener("messageerror", () => {
+    failWorkerOperation(
+      created,
+      "The browser analyzer returned an unreadable response.",
+    );
+  });
+  return created;
 }
 
 function setStatus(message, state = "idle") {
@@ -180,11 +318,18 @@ async function analyze(file) {
     if (!proceed) return;
   }
 
-  setWorkerOperation("analyze");
+  const operationID = beginWorkerOperation("analyze");
   setStatus(`Reading ${file.name}…`, "working");
   try {
     const bytes = await file.arrayBuffer();
-    worker.postMessage(
+    if (
+      activeOperationID !== operationID ||
+      workerOperation !== "analyze"
+    ) {
+      return;
+    }
+    const activeWorker = createWorker();
+    activeWorker.postMessage(
       {
         type: "analyze",
         name: file.name,
@@ -194,8 +339,11 @@ async function analyze(file) {
       [bytes],
     );
   } catch (error) {
-    setWorkerOperation("idle");
-    setStatus(error instanceof Error ? error.message : String(error), "error");
+    if (activeOperationID !== operationID) return;
+    failWorkerOperation(
+      worker,
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 
@@ -218,19 +366,37 @@ function showReport(html, record) {
 
 async function openSavedAnalysis(recordOrID) {
   if (workerBusy()) return;
-  let record = recordOrID;
-  if (typeof recordOrID === "string") {
-    setLibraryMessage("Opening analysis…");
-    record = await getAnalysis(recordOrID);
+  const operationID = beginWorkerOperation("render");
+  try {
+    let record = recordOrID;
+    if (typeof recordOrID === "string") {
+      setLibraryMessage("Opening analysis…");
+      record = await getAnalysis(recordOrID);
+    }
+    if (
+      activeOperationID !== operationID ||
+      workerOperation !== "render"
+    ) {
+      return;
+    }
+    if (!record?.report) {
+      throw new Error("This saved analysis is no longer available.");
+    }
+    const requestID = ++renderRequestID;
+    pendingRenders.set(requestID, record);
+    setLibraryMessage("Rendering report…");
+    createWorker().postMessage({
+      type: "render",
+      requestID,
+      report: record.report,
+    });
+  } catch (error) {
+    if (activeOperationID !== operationID) return;
+    failWorkerOperation(
+      worker,
+      error instanceof Error ? error.message : String(error),
+    );
   }
-  if (!record?.report) {
-    throw new Error("This saved analysis is no longer available.");
-  }
-  const requestID = ++renderRequestID;
-  pendingRenders.set(requestID, record);
-  setWorkerOperation("render");
-  setLibraryMessage("Rendering report…");
-  worker.postMessage({ type: "render", requestID, report: record.report });
 }
 
 function leaveReport({ focusAnalyzer = true } = {}) {
@@ -251,7 +417,31 @@ function leaveReport({ focusAnalyzer = true } = {}) {
   if (focusAnalyzer) window.requestAnimationFrame(() => dropZone.focus());
 }
 
-function renderLibrary() {
+function focusedLibraryAction() {
+  const button = document.activeElement?.closest?.(
+    "button[data-action][data-analysis-id]",
+  );
+  if (!button || !libraryList.contains(button)) return null;
+  return {
+    action: button.dataset.action,
+    analysisID: button.dataset.analysisId,
+  };
+}
+
+function restoreLibraryFocus(target) {
+  if (!target) return;
+  window.requestAnimationFrame(() => {
+    const button = [...libraryList.querySelectorAll("button[data-action]")].find(
+      (candidate) =>
+        candidate.dataset.action === target.action &&
+        candidate.dataset.analysisId === target.analysisID,
+    );
+    (button || libraryList.querySelector("button[data-action]") || importReport)
+      .focus();
+  });
+}
+
+function renderLibrary({ focusAction = focusedLibraryAction() } = {}) {
   libraryList.replaceChildren();
   comparePrompt.hidden = !baselineID;
   const baseline = recentAnalyses.find((item) => item.id === baselineID);
@@ -260,6 +450,8 @@ function renderLibrary() {
     : "";
 
   if (!recentAnalyses.length) {
+    libraryList.append(element("p", "library-empty", "No saved analyses."));
+    restoreLibraryFocus(focusAction);
     return;
   }
 
@@ -310,6 +502,20 @@ function renderLibrary() {
       button.disabled = workerBusy();
       button.dataset.action = action;
       button.dataset.analysisId = record.id;
+      const recordLabel = analysisLabel(record);
+      const ariaLabel =
+        action === "open"
+          ? `Open ${recordLabel}`
+          : action === "compare"
+            ? record.id === baselineID
+              ? `Cancel comparison with ${recordLabel}`
+              : baseline
+                ? `Compare ${analysisLabel(baseline)} with ${recordLabel}`
+                : `Compare ${recordLabel}`
+            : action === "json"
+              ? `Export ${recordLabel} as JSON`
+              : `Delete ${recordLabel}`;
+      button.setAttribute("aria-label", ariaLabel);
       if (action === "compare") {
         button.setAttribute("aria-pressed", String(record.id === baselineID));
       }
@@ -318,6 +524,7 @@ function renderLibrary() {
     row.append(actions);
     libraryList.append(row);
   }
+  restoreLibraryFocus(focusAction);
 }
 
 async function refreshLibrary() {
@@ -665,15 +872,16 @@ function showComparison(before, after) {
 }
 
 async function chooseComparison(id) {
+  const focusAction = { action: "compare", analysisID: id };
   if (!baselineID) {
     baselineID = id;
-    renderLibrary();
+    renderLibrary({ focusAction });
     comparePrompt.scrollIntoView({ behavior: "smooth", block: "nearest" });
     return;
   }
   if (baselineID === id) {
     baselineID = null;
-    renderLibrary();
+    renderLibrary({ focusAction });
     return;
   }
   setLibraryMessage("Preparing comparison…");
@@ -778,50 +986,13 @@ dropZone.addEventListener("drop", (event) => {
   if (file) void analyze(file);
 });
 
-worker.addEventListener("message", ({ data }) => {
-  if (data.type === "progress") {
-    if (workerOperation === "render") setLibraryMessage(data.message);
-    else setStatus(data.message, "working");
-    return;
-  }
-  if (data.type === "rendered") {
-    const record = pendingRenders.get(data.requestID);
-    pendingRenders.delete(data.requestID);
-    setWorkerOperation("idle");
-    setLibraryMessage("");
-    if (record) showReport(data.html, record);
-    return;
-  }
-  if (data.type === "render-error") {
-    pendingRenders.delete(data.requestID);
-    setWorkerOperation("idle");
-    setLibraryMessage(
-      data.message || "The saved report could not be rendered.",
-      "error",
-    );
-    return;
-  }
-  if (data.type === "error") {
-    setWorkerOperation("idle");
-    setStatus(data.message, "error");
-    return;
-  }
-  if (data.type !== "result") return;
-
-  setWorkerOperation("saving");
+cancelAnalysis.addEventListener("click", () => {
+  if (workerOperation !== "analyze") return;
+  resetWorkerOperation();
+  input.value = "";
+  dropZone.classList.remove("is-dragging");
   setStatus("");
-  void handleAnalysisResult(data)
-    .catch((error) => {
-      setStatus(error instanceof Error ? error.message : String(error), "error");
-    })
-    .finally(() => setWorkerOperation("idle"));
-});
-
-worker.addEventListener("error", (event) => {
-  setWorkerOperation("idle");
-  const message = event.message || "The browser analyzer failed to start.";
-  if (pendingRenders.size) setLibraryMessage(message, "error");
-  else setStatus(message, "error");
+  focusDropZone();
 });
 
 analyzeAnother.addEventListener("click", () => leaveReport());
@@ -846,8 +1017,13 @@ compareAnalyze.addEventListener("click", () => {
   if (!workerBusy()) input.click();
 });
 compareCancel.addEventListener("click", () => {
+  const cancelledBaselineID = baselineID;
   baselineID = null;
-  renderLibrary();
+  renderLibrary({
+    focusAction: cancelledBaselineID
+      ? { action: "compare", analysisID: cancelledBaselineID }
+      : null,
+  });
 });
 
 importInput.addEventListener("change", () => {
@@ -865,6 +1041,7 @@ libraryList.addEventListener("click", (event) => {
   if (workerBusy()) return;
   const id = button.dataset.analysisId;
   const action = button.dataset.action;
+  const focusAction = { action, analysisID: id };
   button.disabled = true;
   void (async () => {
     if (action === "open") {
@@ -902,7 +1079,13 @@ libraryList.addEventListener("click", (event) => {
       );
     })
     .finally(() => {
-      if (button.isConnected) button.disabled = false;
+      if (button.isConnected) button.disabled = workerBusy();
+      if (
+        !document.body.classList.contains("has-result") &&
+        !document.body.classList.contains("is-comparing")
+      ) {
+        restoreLibraryFocus(focusAction);
+      }
     });
 });
 

@@ -53,6 +53,12 @@ def build(output: Path) -> Path:
         runtime_output / "LICENSE",
     )
 
+    font_source = WEB_SOURCE / "fonts"
+    font_output = output / "fonts"
+    if font_output.exists():
+        shutil.rmtree(font_output)
+    shutil.copytree(font_source, font_output)
+
     # Pyodide is self-hosted so the worker never executes remote code before
     # receiving the user's IPA bytes.
     pyodide_source = ROOT / "vendor" / "pyodide"

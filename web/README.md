@@ -14,6 +14,9 @@ The host keeps completed report JSON in IndexedDB for History and Compare. It
 does not persist IPA bytes or imported HTML. Storage is local to the current
 browser profile and site origin.
 
+The landing-page fonts are served from `web/fonts`; loading OpenBundle does not
+contact a third-party font CDN.
+
 Build it from the repository root:
 
 ```bash

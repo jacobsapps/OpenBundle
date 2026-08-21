@@ -52,6 +52,10 @@ origin.
 to a subpath such as `/openbundle/` on Vercel, GitHub Pages, S3, or any other
 static host. There is no analysis API and no uploaded bundle to secure.
 
+`vercel.json` builds that directory directly and applies the production CSP and
+privacy headers. A dedicated origin is recommended because IndexedDB is scoped
+to an origin, not to a URL path.
+
 ## Architecture
 
 ```text
@@ -153,15 +157,15 @@ The six local test IPAs and generated browser reports belong in `ipas/` and
 
 ## Privacy and runtime dependencies
 
-Bundle analysis stays in the tab. The Pyodide runtime and asset-catalog decoder
-are pinned and self-hosted; selected files never reach third-party code. The
-landing page still loads its typefaces from Google Fonts. Downloaded reports
-contain their CSS and JavaScript inline and need no server to remain
-interactive.
+Bundle analysis stays in the tab. The Pyodide runtime, asset-catalog decoder,
+and landing-page typefaces are pinned and self-hosted; selected files never
+reach third-party code. Downloaded reports contain their CSS and JavaScript
+inline and need no server to remain interactive.
 
 OpenBundle is MIT licensed. The vendored CAR parser retains its upstream MIT
-notice, and the self-hosted Pyodide runtime retains its MPL-2.0 notice, in every
-built static distribution.
+notice, the self-hosted Pyodide runtime retains its MPL-2.0 notice, and the
+typefaces retain their Apache-2.0/OFL-1.1 notices in every built static
+distribution.
 
 OpenBundle is an independent project and is not affiliated with or endorsed by
 Emerge Tools or Sentry.
