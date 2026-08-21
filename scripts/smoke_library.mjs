@@ -160,7 +160,7 @@ try {
   });
   await command("Page.navigate", { url: siteURL });
   await waitFor(
-    'document.documentElement.dataset.openbundleReady === "true"',
+    'document.documentElement?.dataset.openbundleReady === "true"',
     15_000,
     "the browser host",
   );
@@ -204,7 +204,7 @@ try {
 
   await command("Page.reload");
   await waitFor(
-    'document.documentElement.dataset.openbundleReady === "true" && document.querySelectorAll(".library-row").length === 2',
+    'document.documentElement?.dataset.openbundleReady === "true" && document.querySelectorAll(".library-row").length === 2',
     30_000,
     "IndexedDB history after reload",
   );
