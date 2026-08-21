@@ -224,6 +224,14 @@ try {
             recommendationsSorted: recommendationSavings.every((value,index) => index === 0 || recommendationSavings[index - 1] >= value),
             recommendationsMaterial: recommendationSavings.every((value) => Number.isFinite(value) && value >= 100000),
             recommendationIconsMissing: recommendations.filter((element) => !element.querySelector(".recommendation-icon svg")).length,
+            recommendationExpanders: recommendations.filter((element) => element.matches("details")).length,
+            expectedRecommendationExpanders: qualifyingRecommendations.filter((item) => Array.isArray(item.items) && item.items.length).length,
+            recommendationsAllExpandable: qualifyingRecommendations.every((item) => Array.isArray(item.items) && item.items.length),
+            recommendationEvidenceMatches: qualifyingRecommendations.every((item,index) => {
+              const expected = Array.isArray(item.items) ? item.items.length : 0;
+              const actual = recommendations[index]?.querySelectorAll(".recommendation-evidence").length || 0;
+              return actual === expected;
+            }),
             hasPotentialBadges: Boolean(document.querySelector(".recommendation-saving span")),
             treemapTiles: document.querySelectorAll("#bundle-map .treemap-block, #bundle-map .treemap-group").length,
             overlappingTilePairs,
@@ -269,6 +277,9 @@ try {
     !reportUI?.recommendationsSorted ||
     !reportUI?.recommendationsMaterial ||
     reportUI?.recommendationIconsMissing > 0 ||
+    reportUI?.recommendationExpanders !== reportUI?.expectedRecommendationExpanders ||
+    !reportUI?.recommendationsAllExpandable ||
+    !reportUI?.recommendationEvidenceMatches ||
     reportUI?.hasPotentialBadges ||
     reportUI?.overlappingTilePairs > 0 ||
     reportUI?.treemapLayers !== 1 ||
@@ -289,6 +300,125 @@ try {
       `Standalone report did not render cleanly: ${JSON.stringify(reportUI)}.`,
     );
   }
+  const recommendationInteraction = JSON.parse(
+    (
+      await command("Runtime.evaluate", {
+        expression: `(() => {
+          const recommendation = document.querySelector("#recommendations-list details.recommendation");
+          if (!recommendation) return JSON.stringify({ available:false });
+          const activeView = document.querySelector(".view.active")?.id;
+          recommendation.querySelector(":scope > summary").click();
+          const outerOpen = recommendation.open;
+          const evidence = recommendation.querySelector("details.recommendation-evidence");
+          if (evidence) evidence.querySelector(":scope > summary").click();
+          const nestedOpen = evidence ? evidence.open : true;
+          const stayedInView = document.querySelector(".view.active")?.id === activeView;
+          if (evidence) evidence.open = false;
+          recommendation.open = false;
+          return JSON.stringify({available:true,outerOpen,nestedOpen,stayedInView});
+        })()`,
+        returnByValue: true,
+      })
+    ).result.value,
+  );
+  if (
+    recommendationInteraction.available &&
+    (!recommendationInteraction.outerOpen ||
+      !recommendationInteraction.nestedOpen ||
+      !recommendationInteraction.stayedInView)
+  ) {
+    throw new Error(
+      `Recommendation expansion failed: ${JSON.stringify(recommendationInteraction)}.`,
+    );
+  }
+  if (process.env.TEST_RECOMMENDATION_BATCH === "1") {
+    const recommendationBatch = JSON.parse(
+      (
+        await command("Runtime.evaluate", {
+          expression: `(() => {
+            document.querySelector('[data-view="insights"]')?.click();
+            const button = document.querySelector("#recommendations-list [data-recommendation-more]");
+            if (!button) return JSON.stringify({ available:false });
+            const recommendation = button.closest("details.recommendation");
+            recommendation.open = true;
+            const before = [...recommendation.querySelectorAll(".recommendation-evidence[hidden]")];
+            const first = before[0];
+            button.click();
+            const after = recommendation.querySelectorAll(".recommendation-evidence[hidden]").length;
+            const focused = document.activeElement === first || document.activeElement === first?.querySelector(":scope > summary");
+            return JSON.stringify({
+              available:true,
+              before:before.length,
+              after,
+              revealed:before.length - after,
+              focused,
+            });
+          })()`,
+          returnByValue: true,
+        })
+      ).result.value,
+    );
+    if (
+      !recommendationBatch.available ||
+      recommendationBatch.revealed !== Math.min(20,recommendationBatch.before) ||
+      !recommendationBatch.focused
+    ) {
+      throw new Error(
+        `Recommendation evidence batching failed: ${JSON.stringify(recommendationBatch)}.`,
+      );
+    }
+    await command("Runtime.evaluate", {
+      expression: `document.querySelector('[data-view="map"]')?.click()`,
+    });
+    await delay(50);
+  }
+  const architectureDuplicateInteraction = JSON.parse(
+    (
+      await command("Runtime.evaluate", {
+        expression: `(() => {
+          document.querySelector('[data-view="architecture"]')?.click();
+          const row = document.querySelector("#architecture-stack .architecture-duplicate-item");
+          if (!row) return JSON.stringify({ available:false });
+          row.querySelector(":scope > summary")?.click();
+          const locations = row.querySelector(".architecture-location-list");
+          const more = document.querySelector("#architecture-stack [data-architecture-more]");
+          const moreTable = more?.closest(".architecture-table");
+          const hiddenBefore = moreTable?.querySelectorAll(".architecture-duplicate-item[hidden]").length || 0;
+          const firstHidden = moreTable?.querySelector(".architecture-duplicate-item[hidden]");
+          more?.click();
+          const hiddenAfter = moreTable?.querySelectorAll(".architecture-duplicate-item[hidden]").length || 0;
+          return JSON.stringify({
+            available:true,
+            open:row.open,
+            locationCount:locations?.querySelectorAll("code").length || 0,
+            locationsVisible:Boolean(locations?.getBoundingClientRect().height),
+            batchingAvailable:Boolean(more),
+            batchBefore:hiddenBefore,
+            batchRevealed:hiddenBefore - hiddenAfter,
+            batchFocused:!more || document.activeElement === firstHidden?.querySelector(":scope > summary"),
+          });
+        })()`,
+        returnByValue: true,
+      })
+    ).result.value,
+  );
+  if (
+    architectureDuplicateInteraction.available &&
+    (!architectureDuplicateInteraction.open ||
+      architectureDuplicateInteraction.locationCount < 2 ||
+      !architectureDuplicateInteraction.locationsVisible ||
+      (architectureDuplicateInteraction.batchingAvailable &&
+        (architectureDuplicateInteraction.batchRevealed !== Math.min(50,architectureDuplicateInteraction.batchBefore) ||
+          !architectureDuplicateInteraction.batchFocused)))
+  ) {
+    throw new Error(
+      `Architecture duplicate disclosure failed: ${JSON.stringify(architectureDuplicateInteraction)}.`,
+    );
+  }
+  await command("Runtime.evaluate", {
+    expression: `document.querySelector('[data-view="map"]')?.click()`,
+  });
+  await delay(50);
   const mapInteraction = JSON.parse(
     (
       await command("Runtime.evaluate", {
@@ -374,9 +504,40 @@ try {
     });
     await delay(250);
   }
+  if (process.env.OPEN_RECOMMENDATION_ID || process.env.OPEN_FIRST_RECOMMENDATION === "1") {
+    await command("Runtime.evaluate", {
+      expression: `(() => {
+        const wanted = ${JSON.stringify(process.env.OPEN_RECOMMENDATION_ID || "")};
+        const recommendation = wanted
+          ? document.querySelector('#recommendations-list .recommendation[data-insight-id="' + CSS.escape(wanted) + '"]')
+          : document.querySelector("#recommendations-list details.recommendation");
+        if (recommendation instanceof HTMLDetailsElement) {
+          recommendation.open = true;
+          if (${JSON.stringify(process.env.OPEN_FIRST_RECOMMENDATION_ITEM === "1")}) {
+            const evidence = recommendation.querySelector("details.recommendation-evidence");
+            if (evidence instanceof HTMLDetailsElement) evidence.open = true;
+          }
+          recommendation.scrollIntoView({ block:"start" });
+        }
+      })()`,
+    });
+    await delay(150);
+  }
   if (screenshotView === "binaries" && process.env.OPEN_FIRST_BINARY === "1") {
     await command("Runtime.evaluate", {
       expression: `document.querySelector("#binaries-stack .binary-item")?.setAttribute("open", "")`,
+    });
+    await delay(150);
+  }
+  if (screenshotView === "architecture" && process.env.OPEN_FIRST_ARCHITECTURE_DUPLICATE === "1") {
+    await command("Runtime.evaluate", {
+      expression: `(() => {
+        const row = document.querySelector("#architecture-stack .architecture-duplicate-item");
+        if (row instanceof HTMLDetailsElement) {
+          row.open = true;
+          row.scrollIntoView({ block:"start" });
+        }
+      })()`,
     });
     await delay(150);
   }

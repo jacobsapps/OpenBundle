@@ -199,6 +199,10 @@ function normalizeReportCollections(input) {
   for (const insight of input.insights) {
     arrayField(insight, "paths");
     insight.items = objectArray(insight.items);
+    for (const item of insight.items) {
+      arrayField(item, "paths");
+      item.variants = objectArray(item.variants);
+    }
   }
 
   input.architecture = plainObject(input.architecture);
@@ -207,10 +211,19 @@ function normalizeReportCollections(input) {
   input.architecture.duplicateComponents = objectArray(
     input.architecture.duplicateComponents,
   );
+  input.architecture.crossTargetDuplicates = plainObject(
+    input.architecture.crossTargetDuplicates,
+  );
+  input.architecture.crossTargetDuplicates.items = objectArray(
+    input.architecture.crossTargetDuplicates.items,
+  );
   for (const framework of input.architecture.frameworks) {
     arrayField(framework, "consumers");
   }
   for (const duplicate of input.architecture.duplicateComponents) {
+    arrayField(duplicate, "paths");
+  }
+  for (const duplicate of input.architecture.crossTargetDuplicates.items) {
     arrayField(duplicate, "paths");
   }
 

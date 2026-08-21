@@ -428,6 +428,14 @@ test("keeps same-named targets distinct by bundle path", () => {
 
 test("normalizes malformed nested renderer collections", () => {
   const value = report();
+  value.insights = [
+    {
+      id: "duplicates",
+      savings: 120_000,
+      paths: "root.dat",
+      items: [{ paths: "copy.dat", variants: "2x" }],
+    },
+  ];
   value.capabilities.declarations = {
     targets: [{ permissions: "Camera", entitlements: [{ values: "value" }] }],
     privacyManifests: [
@@ -442,6 +450,7 @@ test("normalizes malformed nested renderer collections", () => {
     targets: [],
     frameworks: [{ consumers: "App" }],
     duplicateComponents: [{ paths: "A.framework" }],
+    crossTargetDuplicates: { items: [{ paths: "shared.js" }] },
   };
   value.binaries = {
     items: [{ architectures: [{ dependencies: "A", segments: [{ sections: "B" }] }] }],
@@ -449,10 +458,14 @@ test("normalizes malformed nested renderer collections", () => {
   value.locales = { rows: "en" };
 
   const normalized = validateAndNormalizeReport(value);
+  assert.deepEqual(normalized.insights[0].paths, []);
+  assert.deepEqual(normalized.insights[0].items[0].paths, []);
+  assert.deepEqual(normalized.insights[0].items[0].variants, []);
   assert.deepEqual(normalized.capabilities.declarations.targets[0].permissions, []);
   assert.deepEqual(normalized.capabilities.declarations.targets[0].entitlements[0].values, []);
   assert.deepEqual(normalized.capabilities.declarations.privacyManifests[0].accessedAPIs[0].reasons, []);
   assert.deepEqual(normalized.architecture.frameworks[0].consumers, []);
+  assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].paths, []);
   assert.deepEqual(normalized.binaries.items[0].architectures[0].segments[0].sections, []);
   assert.deepEqual(normalized.locales.rows, []);
 });

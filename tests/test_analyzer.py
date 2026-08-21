@@ -12,6 +12,7 @@ from openbundle.analyzer import (
     _architecture_inventory,
     _binary_inventory,
     _collect_capability_declarations,
+    _cross_target_duplicate_inventory,
     _rank_recommendations,
     _representative_asset_rendition,
 )
@@ -86,6 +87,158 @@ class AnalyzerTests(unittest.TestCase):
             [item["id"] for item in ranked],
             ["large", "tie-a", "tie-z"],
         )
+
+    def test_loose_image_thinning_keeps_grouped_scale_evidence(self) -> None:
+        def image(path: str, size: int, digest: str) -> Record:
+            return Record(
+                relative_path=path,
+                absolute_path=Path("/temporary/Test.app") / path,
+                size=size,
+                compressed_size=size,
+                allocated_size=size,
+                category="image",
+                sha256=digest,
+            )
+
+        records = [
+            image("Artwork@2x.png", 120_000, "1" * 64),
+            image("Artwork@3x.png", 260_000, "2" * 64),
+            image("Icon@2x~iphone.png", 80_000, "3" * 64),
+            image("Icon@3x~iphone.png", 150_000, "4" * 64),
+            image("Icon@2x~ipad.png", 90_000, "5" * 64),
+            image("Badge@2x~iphone.png", 50_000, "6" * 64),
+            image("Badge@2x~ipad.png", 60_000, "7" * 64),
+        ]
+        insights: list[dict] = []
+
+        BundleAnalyzer()._asset_catalog_insights(records, insights)
+
+        insight = next(item for item in insights if item["id"] == "asset-catalog-scales")
+        self.assertEqual(insight["savings"], 200_000)
+        self.assertEqual(len(insight["items"]), 2)
+        artwork = insight["items"][0]
+        self.assertEqual(artwork["name"], "Artwork.png")
+        self.assertEqual(artwork["size"], 380_000)
+        self.assertEqual(artwork["retainedSize"], 260_000)
+        self.assertEqual(artwork["savings"], 120_000)
+        self.assertEqual(
+            [variant["scale"] for variant in artwork["variants"]],
+            [2, 3],
+        )
+        self.assertNotIn("asset-catalog-scales", records[4].insight_ids)
+        self.assertNotIn("asset-catalog-scales", records[5].insight_ids)
+        self.assertNotIn("asset-catalog-scales", records[6].insight_ids)
+
+    def test_duplicate_recommendation_keeps_every_group_for_expansion(self) -> None:
+        records = []
+        for index in range(101):
+            digest = f"{index:064x}"
+            for copy in range(2):
+                records.append(
+                    Record(
+                        relative_path=f"Target{copy}/duplicate-{index}.dat",
+                        absolute_path=Path("/temporary/Test.app")
+                        / f"Target{copy}/duplicate-{index}.dat",
+                        size=2_048,
+                        compressed_size=2_048,
+                        allocated_size=4_096,
+                        category="other",
+                        sha256=digest,
+                    )
+                )
+        insights: list[dict] = []
+
+        BundleAnalyzer()._duplicate_insight(records, [], insights)
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(len(insights[0]["items"]), 101)
+        self.assertEqual(insights[0]["savings"], 101 * 2_048)
+        self.assertEqual(insights[0]["pathCount"], 202)
+        self.assertEqual(len(insights[0]["paths"]), 202)
+        self.assertEqual(insights[0]["pathsOmitted"], 0)
+
+    def test_duplicate_savings_do_not_cross_runtime_bundles(self) -> None:
+        paths = (
+            "assets/shared.js",
+            "PlugIns/Share.appex/share-copy.js",
+            "PlugIns/Widget.appex/widget-copy.js",
+        )
+        records = [
+            Record(
+                relative_path=path,
+                absolute_path=Path("/temporary/Test.app") / path,
+                size=250_000,
+                compressed_size=200_000,
+                allocated_size=253_952,
+                category="other",
+                sha256="a" * 64,
+            )
+            for path in paths
+        ]
+        insights: list[dict] = []
+
+        BundleAnalyzer()._duplicate_insight(records, [], insights)
+
+        self.assertEqual(insights, [])
+        self.assertTrue(all(record.duplicate_group is None for record in records))
+
+        inventory = _cross_target_duplicate_inventory(records)
+        self.assertEqual(inventory["count"], 1)
+        self.assertEqual(inventory["totalRepeatedSize"], 500_000)
+        self.assertEqual(inventory["items"][0]["targetCount"], 3)
+        self.assertEqual(inventory["items"][0]["pathCount"], 3)
+        self.assertEqual(
+            inventory["items"][0]["name"],
+            "shared.js +2 exact matches",
+        )
+
+    def test_localization_and_interface_slots_are_not_removable_duplicates(self) -> None:
+        records = [
+            Record(
+                relative_path=path,
+                absolute_path=Path("/temporary/Test.app") / path,
+                size=120_000,
+                compressed_size=80_000,
+                allocated_size=122_880,
+                category=category,
+                sha256=digest,
+            )
+            for path, category, digest in (
+                ("en.lproj/Localizable.strings", "localization", "b" * 64),
+                ("fr.lproj/Localizable.strings", "localization", "b" * 64),
+                ("First.storyboardc/view.nib", "interface", "c" * 64),
+                ("Second.storyboardc/view.nib", "interface", "c" * 64),
+            )
+        ]
+        insights: list[dict] = []
+
+        BundleAnalyzer()._duplicate_insight(records, [], insights)
+
+        self.assertEqual(insights, [])
+
+    def test_duplicate_evidence_keeps_a_representative_filename(self) -> None:
+        records = [
+            Record(
+                relative_path=path,
+                absolute_path=Path("/temporary/Test.app") / path,
+                size=120_000,
+                compressed_size=80_000,
+                allocated_size=122_880,
+                category="image",
+                sha256="d" * 64,
+            )
+            for path in ("EmptyAudio.png", "EmptyImages.png")
+        ]
+        insights: list[dict] = []
+
+        BundleAnalyzer()._duplicate_insight(records, [], insights)
+
+        self.assertEqual(
+            insights[0]["items"][0]["name"],
+            "EmptyAudio.png +1 exact matches",
+        )
+        self.assertEqual(insights[0]["pathCount"], 2)
+        self.assertEqual(insights[0]["pathsOmitted"], 0)
 
     def test_static_linking_candidates_are_architecture_evidence_not_savings(self) -> None:
         def binary(

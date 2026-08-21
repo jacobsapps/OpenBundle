@@ -12,19 +12,22 @@ there is no supported CLI or macOS executable.
 
 | Check | Browser implementation |
 | --- | --- |
-| Remove duplicate files | SHA-256 and exact byte size for loose files; content digests over decoded rasters or preserved encoded payloads, with exact on-disk sizes for supported `Assets.car` renditions |
+| Remove duplicate files | SHA-256 and exact byte size within one runtime bundle; cross-target repeats are kept as Architecture evidence rather than claimed savings |
+| Enable image thinning | Groups loose `@1x`/`@2x`/`@3x` sets by path and estimates the per-device unpacked bytes asset-catalog thinning can avoid |
 | Optimize images | Measures quality-85 conversions for loose images and supported catalog renditions; requires at least 4 KB of measured saving |
 | Strip binary symbols | Parses 32- and 64-bit Mach-O symbol and string tables and models `strip -rSTx` without invoking Apple tools |
 | Remove binary symbol metadata | Parses modern and legacy dyld export tries, counts executable exports, and estimates reducible metadata |
 | Review static linking | Resolves `LC_RPATH` load commands to embedded frameworks and ranks one-consumer review candidates by shipped size |
 
-The report shows measured recommendations of 100 KB or more, ordered by saving.
+The report shows recommendations of 100 KB or more, ordered by saving. Each
+recommendation expands into its measured files, binaries, renditions, or scale
+sets.
 
 ## Report views
 
 - Bundle map and size-ranked recommendations
 - Images with one representative rendition per asset
-- Targets, embedded frameworks, linker consumers, and static/mergeable reviews
+- Targets, embedded frameworks, linker consumers, cross-target repeats, and static/mergeable reviews
 - Mach-O binaries with strip/export opportunities and section composition
 - Declared capabilities, privacy manifests, and entitlements
 - App and component localizations

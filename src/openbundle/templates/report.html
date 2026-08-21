@@ -490,12 +490,6 @@
     .recommendation {
       --tone: var(--orange);
       position: relative;
-      display: grid;
-      grid-template-columns: 44px minmax(0,1fr) auto;
-      gap: 14px;
-      align-items: center;
-      min-height: 82px;
-      padding: 14px 17px;
       overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -503,6 +497,36 @@
       box-shadow: 0 10px 28px rgba(0,0,0,.1);
     }
     .recommendation::before { position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tone); content: ""; }
+    .recommendation > summary,
+    .recommendation-static-summary {
+      min-height: 82px;
+      display: grid;
+      grid-template-columns: 44px minmax(0,1fr) auto 18px;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 17px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .recommendation-static-summary { grid-template-columns: 44px minmax(0,1fr) auto; cursor: default; }
+    .recommendation > summary::-webkit-details-marker,
+    .recommendation-evidence > summary::-webkit-details-marker { display: none; }
+    .recommendation > summary:focus-visible {
+      outline: 2px solid var(--tone);
+      outline-offset: -3px;
+      border-radius: 11px;
+    }
+    .recommendation[open] > summary { background: color-mix(in srgb,var(--tone) 4%,transparent); }
+    .recommendation-chevron,
+    .evidence-chevron {
+      color: var(--muted);
+      transition: transform 150ms ease,color 150ms ease;
+    }
+    .recommendation[open] > summary .recommendation-chevron,
+    .recommendation-evidence[open] > summary .evidence-chevron {
+      color: var(--text);
+      transform: rotate(90deg);
+    }
     .recommendation-icon {
       width: 44px;
       height: 44px;
@@ -523,6 +547,112 @@
     .recommendation p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
     .recommendation-saving { padding-left: 15px; text-align: right; white-space: nowrap; }
     .recommendation-saving strong { display: block; font-family: var(--display); font-size: 20px; line-height: 1; }
+    .recommendation-details {
+      padding: 12px 17px 17px 75px;
+      border-top: 1px solid var(--line);
+    }
+    .recommendation-evidence-list { display: grid; gap: 6px; }
+    .recommendation-evidence {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(255,255,255,.018);
+    }
+    .recommendation-evidence[hidden] { display: none; }
+    .recommendation-evidence > summary,
+    .recommendation-evidence-static {
+      min-height: 44px;
+      display: grid;
+      grid-template-columns: minmax(0,1fr) auto 14px;
+      gap: 11px;
+      align-items: center;
+      padding: 9px 11px;
+      list-style: none;
+    }
+    .recommendation-evidence > summary { cursor: pointer; }
+    .recommendation-evidence > summary:focus-visible {
+      outline: 2px solid var(--tone);
+      outline-offset: -2px;
+      border-radius: 8px;
+    }
+    .recommendation-evidence-static:focus-visible {
+      outline: 2px solid var(--tone);
+      outline-offset: -2px;
+    }
+    .recommendation-evidence-static { grid-template-columns: minmax(0,1fr) auto; }
+    .evidence-primary { min-width: 0; }
+    .evidence-primary strong,
+    .evidence-primary code {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.3;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .evidence-primary span {
+      display: block;
+      overflow: hidden;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.3;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .evidence-saving {
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .evidence-paths {
+      padding: 4px 11px 9px;
+      border-top: 1px solid var(--line);
+    }
+    .evidence-path {
+      min-height: 30px;
+      display: grid;
+      grid-template-columns: minmax(0,1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border-top: 1px solid color-mix(in srgb,var(--line) 65%,transparent);
+    }
+    .evidence-path:first-child { border-top: 0; }
+    .evidence-path code {
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size: 10px;
+    }
+    .evidence-path span {
+      color: var(--muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .recommendation-more {
+      min-height: 44px;
+      margin-top: 7px;
+      padding: 0 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      color: var(--text);
+      background: var(--panel-soft);
+      font: 700 10px var(--body);
+      cursor: pointer;
+    }
+    .recommendation-more:hover { border-color: var(--tone); }
+    .recommendation-evidence-count {
+      display: inline-block;
+      margin: 9px 0 0 10px;
+      color: var(--muted);
+      font-size: 10px;
+    }
 
     .image-browser {
       height: calc(100vh - 118px);
@@ -766,6 +896,60 @@
     .architecture-tag.duplicate { color: #ffabb3; background: rgba(236,91,103,.14); }
     .architecture-paths { display: grid; gap: 2px; }
     .architecture-paths span { overflow: hidden; color: var(--faint); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .architecture-duplicate-item { border-top: 1px solid var(--line); }
+    .architecture-duplicate-item > summary { border-top: 0; cursor: pointer; list-style: none; }
+    .architecture-duplicate-item > summary::-webkit-details-marker { display: none; }
+    .architecture-duplicate-item > summary:focus-visible { outline: 2px solid var(--orange); outline-offset: -3px; }
+    .architecture-primary .architecture-disclosure {
+      display: inline-block;
+      overflow: visible;
+      margin-top: 0;
+      margin-right: 5px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1;
+      vertical-align: -1px;
+      transition: transform 150ms ease;
+    }
+    .architecture-duplicate-item[open] .architecture-disclosure { transform: rotate(90deg); }
+    .architecture-location-list {
+      display: grid;
+      gap: 0;
+      padding: 3px 15px 11px;
+      border-top: 1px solid var(--line);
+      background: rgba(255,255,255,.012);
+    }
+    .architecture-location-list code,
+    .architecture-location-list span {
+      min-height: 28px;
+      display: flex;
+      align-items: center;
+      overflow-wrap: anywhere;
+      border-top: 1px solid color-mix(in srgb,var(--line) 65%,transparent);
+      color: var(--muted);
+      font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size: 10px;
+    }
+    .architecture-location-list > :first-child { border-top: 0; }
+    .architecture-more-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 15px;
+      border-top: 1px solid var(--line);
+    }
+    .architecture-more {
+      min-height: 44px;
+      padding: 0 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      color: var(--text);
+      background: var(--panel-soft);
+      font: 700 10px var(--body);
+      cursor: pointer;
+    }
+    .architecture-more:hover { border-color: var(--orange); }
+    .architecture-omitted { color: var(--muted); font-size: 10px; }
 
     .binaries-stack {
       width: min(1280px,100%);
@@ -1307,10 +1491,20 @@
     @media (max-width: 520px) {
       .head-stat { display: none; }
       .view-head .architecture-link { display: none; }
-      .recommendation { grid-template-columns: 40px minmax(0,1fr); gap: 11px; }
+      .recommendation > summary,
+      .recommendation-static-summary {
+        grid-template-columns: 40px minmax(0,1fr) 16px;
+        gap: 11px;
+        padding: 12px;
+      }
+      .recommendation-static-summary { grid-template-columns: 40px minmax(0,1fr); }
       .recommendation-icon { width: 40px; height: 40px; }
       .recommendation-saving { grid-column: 2; padding: 0; text-align: left; }
       .recommendation-saving strong { display: inline; font-size: 16px; }
+      .recommendation-chevron { grid-column: 3; grid-row: 1 / span 2; }
+      .recommendation-details { padding: 12px; }
+      .recommendation-evidence > summary,
+      .recommendation-evidence-static { padding-inline: 9px; }
       .locales-row {
         min-width: 0;
         grid-template-columns: minmax(105px,1fr) 50px 56px 66px;
@@ -1328,6 +1522,9 @@
     @media (prefers-reduced-motion: reduce) {
       .view { animation: none; }
       .treemap-hover-frame { transition: none; }
+      .recommendation-chevron,
+      .evidence-chevron,
+      .architecture-disclosure { transition: none; }
       .capabilities-manifest-counts::after,
       .locales-bundle-stats::after { transition: none; }
     }
@@ -1981,17 +2178,122 @@
       if (["lottie-library","similar-lotties"].includes(item.id)) return TONES.animation;
       return TONES.other;
     }
+    const RECOMMENDATION_EVIDENCE_LIMIT = 12;
+    const cleanObjectArray = value => Array.isArray(value)
+      ? value.filter(item => item && typeof item === "object" && !Array.isArray(item))
+      : [];
+    const cleanStringArray = value => Array.isArray(value)
+      ? value.filter(item => typeof item === "string" && item)
+      : [];
+    const fileName = path => String(path || "").split("/").at(-1) || String(path || "File");
+    const parentPath = path => {
+      const parts = String(path || "").split("/");
+      parts.pop();
+      return parts.join("/");
+    };
+    function recommendationCopy(item) {
+      const rows = cleanObjectArray(item.items);
+      const count = Math.max(rows.length,Number(item.itemCount || 0));
+      if (item.id === "duplicates") {
+        return ["Remove duplicate files",`${count.toLocaleString()} exact group${count === 1 ? "" : "s"}.`];
+      }
+      if (item.id === "asset-catalog-scales") {
+        return ["Enable image thinning",`Move ${count.toLocaleString()} loose scale set${count === 1 ? "" : "s"} into .xcassets.`];
+      }
+      return QUICK_COPY[item.id] || [item.title,""];
+    }
+    function evidenceMeta(item,row,paths,variants) {
+      if (item.id === "duplicates") {
+        const count = Math.max(paths.length,Number(row.pathCount || 0));
+        return `${count.toLocaleString()} cop${count === 1 ? "y" : "ies"}`;
+      }
+      if (item.id === "asset-catalog-scales") return parentPath(row.path);
+      if (Number.isFinite(Number(row.optimizedSize)) && Number.isFinite(Number(row.size))) {
+        return `${fmt(row.size)} → ${fmt(row.optimizedSize)}`;
+      }
+      if (Number.isFinite(Number(row.strippedSize)) && Number.isFinite(Number(row.size))) {
+        return `${fmt(row.size)} → ~${fmt(row.strippedSize)}`;
+      }
+      if (Number.isFinite(Number(row.exportCount))) return `${Number(row.exportCount).toLocaleString()} exports`;
+      if (row.method) return String(row.method);
+      if (variants.length) return `${variants.length.toLocaleString()} scales`;
+      return String(row.path || paths[0] || "");
+    }
+    function evidenceBody(row,paths,variants) {
+      const values = variants.length
+        ? variants.map(variant => ({
+            path:String(variant.path || ""),
+            value:`${Number(variant.scale || 0)}×  ${fmt(variant.size)}`
+          }))
+        : paths.map(path => ({path,value:Number.isFinite(Number(row.size)) ? fmt(row.size) : ""}));
+      const omitted = Math.max(0,Number(row.pathsOmitted || 0),Number(row.pathCount || 0) - paths.length);
+      return `<div class="evidence-paths">${values.map(value => `
+        <div class="evidence-path"><code>${esc(value.path)}</code>${value.value ? `<span>${esc(value.value)}</span>` : ""}</div>`).join("")}${omitted ? `<div class="evidence-path"><code>${omitted.toLocaleString()} paths omitted</code></div>` : ""}</div>`;
+    }
+    function recommendationEvidenceRow(item,row,index) {
+      const variants = cleanObjectArray(row.variants);
+      const paths = cleanStringArray(row.paths);
+      if (!paths.length && typeof row.path === "string" && row.path) paths.push(row.path);
+      const path = String(row.path || paths[0] || "");
+      const title = String(row.name || fileName(path) || `Item ${index + 1}`);
+      const meta = evidenceMeta(item,row,paths,variants);
+      const approximate = ["strip-symbols","exported-symbols","asset-catalog-scales"].includes(item.id) ? "~" : "";
+      const saving = Number.isFinite(Number(row.savings)) ? `${approximate}${fmt(row.savings)}` : Number.isFinite(Number(row.size)) ? fmt(row.size) : "";
+      const expandable = variants.length > 0 || paths.length > 1;
+      const hidden = index >= RECOMMENDATION_EVIDENCE_LIMIT ? " hidden" : "";
+      const primary = `<div class="evidence-primary"><strong title="${esc(title)}">${esc(title)}</strong>${meta ? `<span title="${esc(meta)}">${esc(meta)}</span>` : ""}</div>`;
+      if (!expandable) {
+        return `<div class="recommendation-evidence recommendation-evidence-static" tabindex="-1"${hidden}>${primary}${saving ? `<span class="evidence-saving">${saving}</span>` : ""}</div>`;
+      }
+      return `<details class="recommendation-evidence"${hidden}>
+        <summary>${primary}${saving ? `<span class="evidence-saving">${saving}</span>` : "<span></span>"}<span class="evidence-chevron" aria-hidden="true">›</span></summary>
+        ${evidenceBody(row,paths,variants)}
+      </details>`;
+    }
+    function recommendationDetails(item) {
+      const items = cleanObjectArray(item.items);
+      if (!items.length) return "";
+      const rows = items;
+      const totalCount = Math.max(rows.length,Number(item.itemCount || 0));
+      const omitted = Math.max(0,Number(item.itemsOmitted || 0),totalCount - rows.length);
+      const omittedLabel = item.id === "duplicates" ? "groups" : item.id === "asset-catalog-scales" ? "sets" : "items";
+      const more = rows.length > RECOMMENDATION_EVIDENCE_LIMIT
+        ? `<button class="recommendation-more" type="button" data-recommendation-more>Show ${Math.min(20,rows.length - RECOMMENDATION_EVIDENCE_LIMIT).toLocaleString()} more</button>`
+        : "";
+      return `<div class="recommendation-details">
+        <div class="recommendation-evidence-list">${rows.map((row,index) => recommendationEvidenceRow(item,row,index)).join("")}</div>
+        ${more}${omitted ? `<span class="recommendation-evidence-count">${omitted.toLocaleString()} ${omittedLabel} omitted</span>` : ""}
+      </div>`;
+    }
     function renderRecommendations() {
       const holder = document.getElementById("recommendations-list");
       holder.innerHTML = QUALIFYING_INSIGHTS.map(item => {
-        let copy = QUICK_COPY[item.id] || [item.title,""];
-        const estimate = ["strip-symbols","exported-symbols"].includes(item.id) ? "~" : "";
-        return `<article class="recommendation" data-savings="${item.savings}" style="--tone:${insightTone(item)}">
-          <span class="recommendation-icon">${iconSVG(item.id)}</span>
-          <div class="recommendation-copy"><h3>${esc(copy[0])}</h3>${copy[1] ? `<p>${esc(copy[1])}</p>` : ""}</div>
-          <div class="recommendation-saving"><strong>${estimate}${fmt(item.savings)}</strong></div>
-        </article>`;
+        const copy = recommendationCopy(item);
+        const estimate = ["strip-symbols","exported-symbols","asset-catalog-scales"].includes(item.id) ? "~" : "";
+        const details = recommendationDetails(item);
+        const summary = `
+            <span class="recommendation-icon">${iconSVG(item.id)}</span>
+            <div class="recommendation-copy"><h3>${esc(copy[0])}</h3>${copy[1] ? `<p>${esc(copy[1])}</p>` : ""}</div>
+            <div class="recommendation-saving"><strong>${estimate}${fmt(item.savings)}</strong></div>`;
+        if (!details) return `<article class="recommendation" data-insight-id="${esc(item.id)}" data-savings="${item.savings}" style="--tone:${insightTone(item)}"><div class="recommendation-static-summary">${summary}</div></article>`;
+        return `<details class="recommendation" data-insight-id="${esc(item.id)}" data-savings="${item.savings}" style="--tone:${insightTone(item)}">
+          <summary>
+            ${summary}
+            <span class="recommendation-chevron" aria-hidden="true">›</span>
+          </summary>
+          ${details}
+        </details>`;
       }).join("") || `<div class="empty-state">No recommendations.</div>`;
+      holder.querySelectorAll("[data-recommendation-more]").forEach(button => button.addEventListener("click",() => {
+        const details = button.closest(".recommendation-details");
+        const remaining = [...(details?.querySelectorAll(".recommendation-evidence[hidden]") || [])];
+        const rows = remaining.slice(0,20);
+        rows.forEach(row => { row.hidden = false; });
+        const nextCount = remaining.length - rows.length;
+        if (nextCount) button.textContent = `Show ${Math.min(20,nextCount).toLocaleString()} more`;
+        else button.remove();
+        (rows[0]?.querySelector(":scope > summary") || rows[0])?.focus();
+      }));
     }
 
     const ARCHITECTURE = REPORT.architecture || {};
@@ -1999,9 +2301,22 @@
       name:app.name,path:"",kind:"App",bundleID:app.bundleID,size:metrics.logicalSize,compressedSize:metrics.compressedSize
     }];
     const architectureFrameworks = Array.isArray(ARCHITECTURE.frameworks) ? ARCHITECTURE.frameworks : [];
+    const ARCHITECTURE_EVIDENCE_LIMIT = 50;
     const architectureDuplicates = Array.isArray(ARCHITECTURE.duplicateComponents)
-      ? ARCHITECTURE.duplicateComponents.filter(item => Number(item.repeatedSize || 0) >= 100000)
+      ? ARCHITECTURE.duplicateComponents
       : [];
+    const architectureCrossTargetDuplicates = Array.isArray(ARCHITECTURE.crossTargetDuplicates?.items)
+      ? ARCHITECTURE.crossTargetDuplicates.items
+      : [];
+    const architectureCrossTargetDuplicateTotal = Math.max(
+      architectureCrossTargetDuplicates.length,
+      Number(ARCHITECTURE.crossTargetDuplicates?.count || 0)
+    );
+    const architectureCrossTargetDuplicatesOmitted = Math.max(
+      0,
+      Number(ARCHITECTURE.crossTargetDuplicates?.itemsOmitted || 0),
+      architectureCrossTargetDuplicateTotal - architectureCrossTargetDuplicates.length
+    );
     const architectureDisplayName = value => String(value || "").replace(/_[+-]?[a-f0-9]{8,}_PackageProduct$/i,"");
     const consumerLabel = path => {
       const value = String(path || "");
@@ -2019,6 +2334,27 @@
       if (framework.staticCandidate) tags.push(`<span class="architecture-tag candidate">Review static / mergeable</span>`);
       if (framework.duplicateGroup) tags.push(`<span class="architecture-tag duplicate">Exact copy</span>`);
       return tags.join("");
+    }
+    function architectureDuplicateRow(item,count,index) {
+      const allPaths = cleanStringArray(item.paths);
+      const paths = allPaths.slice(0,50);
+      const pathCount = Math.max(paths.length,Number(item.pathCount || allPaths.length));
+      const pathsOmitted = Math.max(0,Number(item.pathsOmitted || 0),pathCount - paths.length);
+      const summaryRemainder = Math.max(0,pathCount - 2);
+      return `<details class="architecture-duplicate-item"${index >= ARCHITECTURE_EVIDENCE_LIMIT ? " hidden" : ""}>
+        <summary class="architecture-row architecture-duplicate-row">
+          <div class="architecture-primary"><strong title="${esc(item.name)}"><span class="architecture-disclosure" aria-hidden="true">›</span>${esc(item.name)}</strong><span>${fmt(item.size)} each</span></div>
+          <div class="architecture-cell">${Number(count || 0).toLocaleString()}</div>
+          <div class="architecture-paths">${paths.slice(0,2).map(path => `<span title="${esc(path)}">${esc(path)}</span>`).join("")}${summaryRemainder ? `<span>+${summaryRemainder.toLocaleString()}</span>` : ""}</div>
+          <div class="architecture-size">${fmt(item.repeatedSize)}</div>
+        </summary>
+        <div class="architecture-location-list">${paths.map(path => `<code>${esc(path)}</code>`).join("")}${pathsOmitted ? `<span>${pathsOmitted.toLocaleString()} paths omitted</span>` : ""}</div>
+      </details>`;
+    }
+    function architectureMore(items,omitted=0) {
+      const remaining = Math.max(0,items.length - ARCHITECTURE_EVIDENCE_LIMIT);
+      if (!remaining && !omitted) return "";
+      return `<div class="architecture-more-row">${remaining ? `<button class="architecture-more" type="button" data-architecture-more>Show ${Math.min(ARCHITECTURE_EVIDENCE_LIMIT,remaining).toLocaleString()} more</button>` : ""}${omitted ? `<span class="architecture-omitted">${omitted.toLocaleString()} groups omitted</span>` : ""}</div>`;
     }
     function renderArchitecture() {
       const holder = document.getElementById("architecture-stack");
@@ -2055,16 +2391,19 @@
         <section class="architecture-section">
           <header class="architecture-section-head"><h3>Exact component copies</h3><span>${architectureDuplicates.length.toLocaleString()}</span></header>
           <div class="architecture-table">
-            <div class="architecture-row architecture-header architecture-duplicate-row"><span>Component</span><span>Copies</span><span>Locations</span><span>Repeated</span></div>
-            ${architectureDuplicates.map(item => {
-              const paths = Array.isArray(item.paths) ? item.paths : [];
-              return `<div class="architecture-row architecture-duplicate-row">
-                <div class="architecture-primary"><strong>${esc(item.name)}</strong><span>${fmt(item.size)} each</span></div>
-                <div class="architecture-cell">${Number(item.copies || paths.length).toLocaleString()}</div>
-                <div class="architecture-paths">${paths.slice(0,2).map(path => `<span title="${esc(path)}">${esc(path)}</span>`).join("")}${paths.length > 2 ? `<span>+${paths.length - 2}</span>` : ""}</div>
-                <div class="architecture-size">${fmt(item.repeatedSize)}</div>
-              </div>`;
-            }).join("")}
+            <div class="architecture-row architecture-header architecture-duplicate-row"><span>Component</span><span>Copies</span><span>Locations</span><span>Repeated bytes</span></div>
+            ${architectureDuplicates.map((item,index) => architectureDuplicateRow(item,item.copies,index)).join("")}
+            ${architectureMore(architectureDuplicates)}
+          </div>
+        </section>` : "";
+
+      const crossTargetDuplicateSection = architectureCrossTargetDuplicates.length ? `
+        <section class="architecture-section">
+          <header class="architecture-section-head"><h3>Repeated files across targets</h3><span>${architectureCrossTargetDuplicateTotal.toLocaleString()}</span></header>
+          <div class="architecture-table">
+            <div class="architecture-row architecture-header architecture-duplicate-row"><span>File</span><span>Targets</span><span>Locations</span><span>Repeated bytes</span></div>
+            ${architectureCrossTargetDuplicates.map((item,index) => architectureDuplicateRow(item,item.targetCount,index)).join("")}
+            ${architectureMore(architectureCrossTargetDuplicates,architectureCrossTargetDuplicatesOmitted)}
           </div>
         </section>` : "";
 
@@ -2083,7 +2422,22 @@
             ${frameworkRows || `<div class="empty-state">No embedded frameworks.</div>`}
           </div>
         </section>
+        ${crossTargetDuplicateSection}
         ${duplicateSection}`;
+      holder.querySelectorAll("[data-architecture-more]").forEach(button => button.addEventListener("click",() => {
+        const table = button.closest(".architecture-table");
+        const buttonRow = button.closest(".architecture-more-row");
+        const remaining = [...(table?.querySelectorAll(".architecture-duplicate-item[hidden]") || [])];
+        const rows = remaining.slice(0,ARCHITECTURE_EVIDENCE_LIMIT);
+        rows.forEach(row => { row.hidden = false; });
+        const nextCount = remaining.length - rows.length;
+        if (nextCount) button.textContent = `Show ${Math.min(ARCHITECTURE_EVIDENCE_LIMIT,nextCount).toLocaleString()} more`;
+        else {
+          button.remove();
+          if (buttonRow && !buttonRow.children.length) buttonRow.remove();
+        }
+        rows[0]?.querySelector(":scope > summary")?.focus();
+      }));
     }
 
     const binarySort = { key:"size", direction:-1 };

@@ -33,6 +33,8 @@ COREML_SUFFIXES = {".mlmodel", ".mlmodelc", ".mlpackage"}
 INTERFACE_SUFFIXES = {".nib", ".storyboardc"}
 LOCALIZATION_SUFFIXES = {".strings", ".stringsdict", ".xcstrings"}
 MIN_RECOMMENDATION_SAVINGS = 100_000
+MAX_INSIGHT_ITEMS = 500
+MAX_INSIGHT_PATHS = 1_000
 
 CATEGORY_LABELS = {
     "binary": "Binaries",
@@ -1015,7 +1017,12 @@ def _safe_version_at_least(value: str | None, major: int) -> bool:
 
 def _is_duplicate_candidate(record: Record) -> bool:
     lower = record.relative_path.lower()
-    if record.size < 1024 or record.category in {"signature", "metadata"}:
+    if record.size < 1024 or record.category in {
+        "signature",
+        "metadata",
+        "localization",
+        "interface",
+    }:
         return False
     # Multiple required app-icon slots commonly contain identical bytes but
     # cannot be collapsed safely. Treating them as removable is a large and
@@ -1363,6 +1370,60 @@ def _component_duplicate_groups(
     return group_map, items
 
 
+def _cross_target_duplicate_inventory(records: list[Record]) -> dict[str, Any]:
+    """Return exact loose-file repetition that spans independent runtimes."""
+
+    groups: dict[tuple[str, int], list[Record]] = {}
+    for record in records:
+        if _is_duplicate_candidate(record):
+            groups.setdefault((record.sha256, record.size), []).append(record)
+
+    items: list[dict[str, Any]] = []
+    for group in groups.values():
+        scopes = {
+            _embedded_bundle_scope(record.relative_path) for record in group
+        }
+        if len(scopes) < 2:
+            continue
+        paths = sorted(
+            (record.relative_path for record in group),
+            key=lambda path: (path.casefold(), path),
+        )
+        names = {record.name for record in group}
+        first_name = Path(paths[0]).name
+        repeated_size = group[0].size * (len(scopes) - 1)
+        items.append(
+            {
+                "name": (
+                    first_name
+                    if len(names) == 1
+                    else f"{first_name} +{len(paths) - 1} exact matches"
+                ),
+                "kind": group[0].category,
+                "size": group[0].size,
+                "copies": len(group),
+                "targetCount": len(scopes),
+                "repeatedSize": repeated_size,
+                "pathCount": len(paths),
+                "paths": paths[:50],
+                "pathsOmitted": max(0, len(paths) - 50),
+            }
+        )
+
+    items.sort(
+        key=lambda item: (
+            -int(item["repeatedSize"]),
+            str(item["name"]).casefold(),
+        )
+    )
+    return {
+        "count": len(items),
+        "totalRepeatedSize": sum(int(item["repeatedSize"]) for item in items),
+        "items": items[:MAX_INSIGHT_ITEMS],
+        "itemsOmitted": max(0, len(items) - MAX_INSIGHT_ITEMS),
+    }
+
+
 def _target_kind(path: str, info: dict[str, Any]) -> str:
     lower_path = path.casefold()
     if not path:
@@ -1568,6 +1629,7 @@ def _architecture_inventory(
         "targets": targets,
         "frameworks": frameworks,
         "duplicateComponents": duplicates,
+        "crossTargetDuplicates": _cross_target_duplicate_inventory(records),
     }
 
 
@@ -1804,6 +1866,8 @@ def _insight(
     items: list[dict[str, Any]] | None = None,
     category: str = "other",
 ) -> dict[str, Any]:
+    all_paths = list(paths or [])
+    all_items = list(items or [])
     return {
         "id": insight_id,
         "title": title,
@@ -1813,8 +1877,12 @@ def _insight(
         "severity": severity,
         "confidence": confidence,
         "savings": savings,
-        "paths": paths or [],
-        "items": items or [],
+        "paths": all_paths[:MAX_INSIGHT_PATHS],
+        "pathCount": len(all_paths),
+        "pathsOmitted": max(0, len(all_paths) - MAX_INSIGHT_PATHS),
+        "items": all_items[:MAX_INSIGHT_ITEMS],
+        "itemCount": len(all_items),
+        "itemsOmitted": max(0, len(all_items) - MAX_INSIGHT_ITEMS),
         "category": category,
     }
 
@@ -2324,10 +2392,17 @@ class BundleAnalyzer:
         insights: list[dict[str, Any]],
     ) -> None:
         record_by_path = {record.relative_path: record for record in records}
-        groups: dict[tuple[str, int], list[Record]] = {}
+        groups: dict[tuple[str, str, int], list[Record]] = {}
         for record in records:
             if _is_duplicate_candidate(record):
-                groups.setdefault((record.sha256, record.size), []).append(record)
+                groups.setdefault(
+                    (
+                        _embedded_bundle_scope(record.relative_path),
+                        record.sha256,
+                        record.size,
+                    ),
+                    [],
+                ).append(record)
         duplicate_groups = [
             group for group in groups.values() if len(group) > 1
         ]
@@ -2349,30 +2424,44 @@ class BundleAnalyzer:
                 record.duplicate_group = group_id
             _mark(group, "duplicates")
             group_paths = [record.relative_path for record in group]
+            group_names = {record.name for record in group}
+            first_name = Path(sorted(group_paths, key=str.casefold)[0]).name
             items.append(
                 {
                     "group": group_id,
-                    "name": group[0].name,
+                    "name": (
+                        first_name
+                        if len(group_names) == 1
+                        else f"{first_name} +{len(group_paths) - 1} exact matches"
+                    ),
                     "size": group[0].size,
                     "savings": group_savings,
-                    "paths": group_paths,
+                    "pathCount": len(group_paths),
+                    "paths": group_paths[:50],
                     "kind": "file",
                 }
             )
             paths.extend(group_paths)
             savings += group_savings
 
-        rendition_groups: dict[tuple[str, int], list[dict[str, Any]]] = {}
+        rendition_groups: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
         for rendition in asset_renditions:
             rendition_path = str(
                 rendition.get("displayPath") or rendition.get("path") or ""
             ).lower()
+            catalog_path = str(rendition.get("path") or "").split("::", 1)[0]
+            catalog_record = record_by_path.get(catalog_path)
             if (
                 "appicon" not in rendition_path
                 and rendition.get("digest")
                 and int(rendition.get("size", 0)) >= 1024
+                and not (catalog_record and catalog_record.duplicate_group)
             ):
-                key = (str(rendition["digest"]), int(rendition["size"]))
+                key = (
+                    _embedded_bundle_scope(catalog_path),
+                    str(rendition["digest"]),
+                    int(rendition["size"]),
+                )
                 rendition_groups.setdefault(key, []).append(rendition)
         for group in sorted(
             (values for values in rendition_groups.values() if len(values) > 1),
@@ -2407,7 +2496,8 @@ class BundleAnalyzer:
                     "name": str(group[0]["name"]),
                     "size": int(group[0]["size"]),
                     "savings": group_savings,
-                    "paths": group_paths,
+                    "pathCount": len(group_paths),
+                    "paths": group_paths[:50],
                     "kind": "asset rendition",
                 }
             )
@@ -2421,12 +2511,9 @@ class BundleAnalyzer:
                     f"Remove {len(items)} duplicate group{'s' if len(items) != 1 else ''}",
                     f"Keeping one copy from each group could save about {savings:,} bytes.",
                     detail=(
-                        "Loose files are matched by SHA-256 content. Asset catalog "
-                        "renditions use a digest of decoded pixels or their preserved "
-                        "encoded payload, plus dimensions, scale, and exact serialized "
-                        "CoreUI size. Matches are byte/content exact within that "
-                        "representation; whether two target bundles can share one copy "
-                        "still needs review."
+                        "Exact matches are scoped to one executable target. Loose files "
+                        "use SHA-256 and size; catalog renditions also bind dimensions, "
+                        "scale, and serialized CoreUI size."
                     ),
                     action=(
                         "Confirm bundle lookup behavior, keep one canonical resource, "
@@ -2435,8 +2522,8 @@ class BundleAnalyzer:
                     severity="high",
                     confidence="review",
                     savings=savings,
-                    paths=paths[:100],
-                    items=items[:100],
+                    paths=paths,
+                    items=items,
                     category="duplicates",
                 )
             )
@@ -2583,39 +2670,73 @@ class BundleAnalyzer:
     def _asset_catalog_insights(
         self, records: list[Record], insights: list[dict[str, Any]]
     ) -> None:
-        loose_scaled: dict[str, list[Record]] = {}
+        loose_scaled: dict[str, list[tuple[int, Record]]] = {}
         for record in records:
             if record.category != "image" or ".car::" in record.relative_path:
                 continue
             match = re.match(
-                r"(?i)(.*?)(?:@([123])x)?(?:~(?:iphone|ipad))?(\.[^.]+)$",
+                r"(?i)(.*?)@([123])x(~(?:iphone|ipad))?(\.[^.]+)$",
                 record.relative_path,
             )
-            if match and match.group(2):
-                key = f"{match.group(1)}{match.group(3)}"
-                loose_scaled.setdefault(key, []).append(record)
-        scale_groups = [group for group in loose_scaled.values() if len(group) > 1]
+            if match:
+                key = f"{match.group(1)}{match.group(3) or ''}{match.group(4)}"
+                loose_scaled.setdefault(key, []).append((int(match.group(2)), record))
+        scale_groups = [
+            (key, group)
+            for key, group in loose_scaled.items()
+            if len({scale for scale, _ in group}) > 1
+        ]
         if scale_groups:
-            candidates = [record for group in scale_groups for record in group]
-            savings = sum(
-                sum(item.size for item in group) - max(item.size for item in group)
-                for group in scale_groups
+            candidates = [
+                record for _, group in scale_groups for _, record in group
+            ]
+            items: list[dict[str, Any]] = []
+            for key, group in scale_groups:
+                variants = sorted(
+                    group,
+                    key=lambda item: (item[0], item[1].relative_path.casefold()),
+                )
+                total_size = sum(record.size for _, record in variants)
+                retained_size = max(record.size for _, record in variants)
+                items.append(
+                    {
+                        "name": Path(key).name,
+                        "path": key,
+                        "kind": "loose image scale set",
+                        "size": total_size,
+                        "retainedSize": retained_size,
+                        "savings": total_size - retained_size,
+                        "paths": [record.relative_path for _, record in variants],
+                        "variants": [
+                            {
+                                "path": record.relative_path,
+                                "scale": scale,
+                                "size": record.size,
+                            }
+                            for scale, record in variants
+                        ],
+                    }
+                )
+            items.sort(
+                key=lambda item: (-int(item["savings"]), str(item["path"]).casefold())
             )
+            savings = sum(int(item["savings"]) for item in items)
             _mark(candidates, "asset-catalog-scales")
             insights.append(
                 _insight(
                     "asset-catalog-scales",
-                    f"Move {len(scale_groups)} loose image set{'s' if len(scale_groups) != 1 else ''} into asset catalogs",
-                    "Loose @2x/@3x variants are shipped together instead of benefiting from App Store thinning.",
+                    f"Enable thinning for {len(scale_groups)} loose image set{'s' if len(scale_groups) != 1 else ''}",
+                    "Loose scale variants cannot use asset-catalog thinning.",
                     detail=(
-                        "The estimate assumes a device needs one scale from each set; actual "
-                        "App Store delivery depends on the asset and target device."
+                        "The estimate keeps the largest file in each set and counts the other "
+                        "scale variants as the minimum per-device opportunity."
                     ),
                     action="Create image sets in an .xcassets catalog and remove the loose copies from bundle resources.",
                     severity="medium",
                     confidence="medium",
                     savings=savings,
                     paths=[record.relative_path for record in candidates],
+                    items=items,
                     category="assets",
                 )
             )
@@ -3020,8 +3141,8 @@ class BundleAnalyzer:
                     severity="high" if total_savings >= 1024 * 1024 else "medium",
                     confidence="medium",
                     savings=total_savings,
-                    paths=paths[:100],
-                    items=optimization_items[:100],
+                    paths=paths,
+                    items=optimization_items,
                     category="images",
                 )
             )
