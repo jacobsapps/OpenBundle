@@ -209,6 +209,33 @@
       background: rgba(255,255,255,.055);
     }
     .nav-icon svg { width: 15px; height: 15px; }
+    .nav-label {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 7px;
+    }
+    .nav-label > span:first-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .nav-count {
+      min-width: 19px;
+      height: 19px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      padding: 0 5px;
+      border-radius: 999px;
+      color: #211916;
+      background: var(--orange);
+      font-size: 10px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+    }
     .rail-metrics {
       display: grid;
       gap: 12px;
@@ -423,48 +450,6 @@
       font-size: 10px;
       font-variant-numeric: tabular-nums;
     }
-    .map-recommendation-mark,
-    .map-key i {
-      width: 8px;
-      height: 8px;
-      display: inline-block;
-      flex: 0 0 auto;
-      border: 1px solid rgba(255,255,255,.9);
-      border-radius: 2px;
-      background: var(--orange);
-      box-shadow: 0 1px 4px rgba(0,0,0,.7);
-      transform: rotate(45deg);
-      pointer-events: none;
-    }
-    .treemap-block.has-recommendation::after {
-      position: absolute;
-      z-index: 3;
-      top: 7px;
-      right: 7px;
-      width: 8px;
-      height: 8px;
-      border: 1px solid rgba(255,255,255,.9);
-      border-radius: 2px;
-      background: var(--orange);
-      box-shadow: 0 1px 4px rgba(0,0,0,.7);
-      content: "";
-      transform: rotate(45deg);
-      pointer-events: none;
-    }
-    .treemap-block.has-recommendation .tile-copy { right: 20px; }
-    .treemap-block.micro.has-recommendation::after { top: 2px; right: 2px; width: 4px; height: 4px; border-width: 0; }
-    .map-key {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex: 0 0 auto;
-      padding: 0 7px;
-      color: #d6cfcd;
-      font-size: 10px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .map-key[hidden] { display: none; }
     .treemap-block.micro {
       border-radius: 0;
       box-shadow: inset 0 0 0 999px rgba(20,17,16,var(--shade,.03));
@@ -1435,7 +1420,8 @@
       .side-nav { grid-template-columns: repeat(3,minmax(0,1fr)); margin: 9px 0; }
       .side-nav .nav-divider { grid-column: 1 / -1; margin-block: 2px; }
       .side-nav button { min-width: 0; min-height: 44px; grid-template-columns: 23px minmax(0,1fr); padding: 7px; font-size: 10px; }
-      .side-nav button span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .side-nav button > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .side-nav .nav-label { overflow: visible; }
       .side-nav button.active { box-shadow: inset 0 -3px var(--orange); }
       .nav-icon { width: 23px; height: 23px; }
       .rail-metrics { grid-template-columns: 1fr 1fr; gap: 18px; padding: 9px 11px; }
@@ -1465,7 +1451,6 @@
       .lens-card { grid-row: 2; }
       .lens-card { height: 68vh; min-height: 500px; }
       .back-button { width: 44px; height: 44px; }
-      .map-key { padding-inline: 4px; font-size: 9px; }
       .contents-card { max-height: none; }
       .image-browser { height: auto; min-height: 0; grid-template-columns: 1fr; }
       .image-sources { max-height: 180px; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -1571,11 +1556,11 @@
       <nav class="side-nav" aria-label="Report sections">
         <button class="active" data-view="map" aria-current="page" aria-pressed="true">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 3h8v10H3zM13 3h8v6h-8zM13 11h8v10h-8zM3 15h8v6H3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></span>
-          <span>Bundle map</span>
+          <span>Bundle treemap</span>
         </button>
         <button data-view="insights" aria-pressed="false">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 18V9m7 9V5m7 13v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
-          <span>Recommendations</span>
+          <span class="nav-label"><span>Recommendations</span><span class="nav-count" id="recommendations-count" aria-hidden="true"></span></span>
         </button>
         <span class="nav-divider" aria-hidden="true"></span>
         <button data-view="images" aria-pressed="false">
@@ -1608,13 +1593,12 @@
 
     <main class="workspace" id="report-workspace" tabindex="-1">
       <section class="view active" id="view-map">
-        <header class="view-head"><h2>Bundle map</h2></header>
+        <header class="view-head"><h2>Bundle treemap</h2></header>
         <div class="map-layout">
           <section class="lens-card">
             <div class="lens-bar">
               <button class="back-button" id="back-button" aria-label="Back one bundle level" hidden>←</button>
               <div class="crumbs" id="crumbs" aria-label="Bundle path"></div>
-              <span class="map-key" id="map-key" hidden><i aria-hidden="true"></i>Recommendations</span>
             </div>
             <div class="treemap" id="bundle-map" role="group" aria-label="Unpacked bundle size treemap"></div>
             <span class="sr-only" id="map-status" aria-live="polite"></span>
@@ -1685,6 +1669,9 @@
     const QUALIFYING_INSIGHTS = [...REPORT.insights]
       .filter(item => typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000)
       .sort((a,b) => b.savings - a.savings || String(a.title || a.id).localeCompare(String(b.title || b.id)));
+    const recommendationsNav = document.querySelector('[data-view="insights"]');
+    document.getElementById("recommendations-count").textContent = QUALIFYING_INSIGHTS.length.toLocaleString();
+    recommendationsNav.setAttribute("aria-label",`Recommendations, ${QUALIFYING_INSIGHTS.length.toLocaleString()} available`);
     const COLORS = {
       binary:"#075f7a", binary_section:"#126784", asset_catalog:"#146347",
       image:"#745709", localization:"#803c1e", font:"#5a3d86",
@@ -1791,46 +1778,6 @@
     const treeState = { focusStack:[REPORT.tree] };
     const focusNode = () => treeState.focusStack.at(-1);
     const nodeSize = node => Number(node?.[METRIC] ?? node?.size ?? 0);
-    const recommendationPath = value => {
-      let path = String(value || "").replace(/\s+\[entry-[^\]]+\]$/i,"");
-      const marker = path.indexOf("::");
-      if (marker >= 0) {
-        const rendition = path.indexOf("/",marker + 2);
-        if (rendition >= 0) path = path.slice(0,rendition);
-      }
-      return path;
-    };
-    const directRecommendationPaths = new Set();
-    QUALIFYING_INSIGHTS.forEach(insight => {
-      if (insight.id === "small-files") return;
-      (insight.items || []).forEach(item => {
-        const measured = Number(item.savings ?? item.size ?? 0);
-        if (!Number.isFinite(measured) || measured < 100000) return;
-        const paths = Array.isArray(item.paths) ? item.paths : [item.path];
-        paths.map(recommendationPath).filter(Boolean).forEach(path => directRecommendationPaths.add(path));
-      });
-    });
-    const recommendationMemo = new WeakMap();
-    const nodeHasRecommendation = node => {
-      if (recommendationMemo.has(node)) return recommendationMemo.get(node);
-      const found = directRecommendationPaths.has(String(node.path || "")) || (node.children || []).some(nodeHasRecommendation);
-      recommendationMemo.set(node,found);
-      return found;
-    };
-    const smallFilesEnabled = QUALIFYING_INSIGHTS.some(insight => insight.id === "small-files");
-    const smallFileWasteMemo = new WeakMap();
-    const smallFileWaste = node => {
-      if (!smallFilesEnabled) return 0;
-      if (smallFileWasteMemo.has(node)) return smallFileWasteMemo.get(node);
-      const children = node.children || [];
-      let waste = children.reduce((sum,child) => sum + smallFileWaste(child),0);
-      if (!children.length && node.kind === "file" && !String(node.path || "").includes("::") && nodeSize(node) > 0 && nodeSize(node) < 4096 && !["signature","metadata"].includes(node.category)) {
-        waste = Math.max(0,Number(node.allocatedSize || 0) - nodeSize(node));
-      }
-      smallFileWasteMemo.set(node,waste);
-      return waste;
-    };
-    const nodeHasMaterialRecommendation = node => nodeHasRecommendation(node) || smallFileWaste(node) >= 100000;
     function compactNodes(nodes,bounds,depth) {
       const sorted = [...nodes].filter(node => nodeSize(node) > 0).sort((a,b) => nodeSize(b) - nodeSize(a));
       if (!sorted.length) return [];
@@ -2010,16 +1957,6 @@
         !String(root.path || "").endsWith("::smaller")
       );
       if (!entries.length) { map.innerHTML = `<div class="empty-state">No bundle contents.</div>`; return; }
-      const markedAncestors = [];
-      let markerCount = 0;
-      entries.forEach(entry => {
-        while (markedAncestors.length && markedAncestors.at(-1).depth >= entry.depth) markedAncestors.pop();
-        const suppressed = markedAncestors.some(ancestor => ancestor.marked);
-        entry.recommended = !suppressed && nodeHasMaterialRecommendation(entry.node);
-        if (entry.recommended) markerCount += 1;
-        if (entry.nested) markedAncestors.push({depth:entry.depth,marked:suppressed || entry.recommended});
-      });
-      document.getElementById("map-key").hidden = markerCount === 0;
       const layer = document.createElement("div");
       layer.className = "treemap-layer";
       const hoverFrame = document.createElement("div");
@@ -2044,11 +1981,9 @@
           label.type = "button";
           label.className = "treemap-group-label";
           label.dataset.nodePath = node.path || "";
-          const recommended = entry.recommended;
-          if (recommended) label.classList.add("has-recommendation");
-          label.setAttribute("aria-label",`Open ${node.name}, ${fmt(size)}${recommended ? ", recommendation available" : ""}`);
+          label.setAttribute("aria-label",`Open ${node.name}, ${fmt(size)}`);
           label.style.cssText = `left:${entry.x + 2}px;top:${entry.y + 2}px;width:${Math.max(0,entry.width - 4)}px;height:${Math.max(17,entry.labelHeight - 4)}px;--tile:${color};z-index:${25 + depth * 3}`;
-          label.innerHTML = `<span>${esc(node.name)}</span><span>${recommended ? `<i class="map-recommendation-mark" aria-hidden="true"></i>` : ""}${fmt(size)}<b>›</b></span>`;
+          label.innerHTML = `<span>${esc(node.name)}</span><span>${fmt(size)}<b>›</b></span>`;
           label.addEventListener("pointerenter",() => showGroupFrame(entry));
           label.addEventListener("pointerleave",() => { if (!label.matches(":focus")) hideGroupFrame(); });
           label.addEventListener("focus",() => showGroupFrame(entry));
@@ -2063,12 +1998,10 @@
         if (drillable) element.type = "button";
         else element.setAttribute("role","img");
         const micro = entry.width < 8 || entry.height < 8 || entry.width * entry.height < 80;
-        const recommended = entry.recommended;
-        const showMarker = recommended && entry.width >= 8 && entry.height >= 8;
-        element.className = `treemap-block${drillable ? "" : " leaf"}${micro ? " micro" : ""}${showMarker ? " has-recommendation" : ""}`;
+        element.className = `treemap-block${drillable ? "" : " leaf"}${micro ? " micro" : ""}`;
         element.dataset.nodePath = node.path || "";
         element.title = title;
-        element.setAttribute("aria-label",`${node.name}, ${fmt(size)}${recommended ? ", recommendation available" : ""}${drillable ? ", open group" : ""}`);
+        element.setAttribute("aria-label",`${node.name}, ${fmt(size)}${drillable ? ", open group" : ""}`);
         element.style.cssText = `left:${entry.x}px;top:${entry.y}px;width:${entry.width}px;height:${entry.height}px;--tile:${color};--shade:${Math.min(.17,.02 + depth * .045)};--tile-font:${Math.max(11,Math.min(15,Math.sqrt(entry.width * entry.height) / 15))}px;z-index:${5 + depth * 3}`;
         if (entry.width >= 48 && entry.height >= 26) {
           element.innerHTML = `<span class="tile-copy"><span class="tile-name">${esc(node.name)}</span>${entry.width >= 84 && entry.height >= 46 ? `<span class="tile-size">${fmt(size)}</span>` : ""}</span>`;

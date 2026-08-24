@@ -955,6 +955,10 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("<!doctype html>", html)
             self.assertIn('data-view="architecture"', html)
             self.assertIn('data-view="binaries"', html)
+            self.assertIn('id="recommendations-count"', html)
+            self.assertIn("bundle treemap", html)
+            self.assertNotIn('id="map-key"', html)
+            self.assertNotIn("map-recommendation-mark", html)
 
     def test_browser_reports_strip_and_exports_from_portable_macho_data(self) -> None:
         record = Record(

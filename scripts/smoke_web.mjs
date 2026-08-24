@@ -204,6 +204,8 @@ try {
           const recommendationSavings = recommendations.map((element) => Number(element.dataset.savings));
           const reportData = JSON.parse(document.querySelector("#report-data").textContent);
           const qualifyingRecommendations = reportData.insights.filter((item) => typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000);
+          const recommendationsNav = document.querySelector('[data-view="insights"]');
+          const recommendationsCount = document.querySelector("#recommendations-count")?.textContent || "";
           const capabilityDeclarations = reportData.capabilities?.declarations || {};
           const declaredCapabilityTargets = (capabilityDeclarations.targets || []).filter((target) => Boolean(target.extensionPoint)
             || ["permissions","backgroundModes","backgroundTasks","urlSchemes","queriedSchemes","bonjourServices","transportDomains","requiredDeviceCapabilities","entitlements"]
@@ -226,6 +228,8 @@ try {
           return JSON.stringify({
             recommendations: recommendations.length,
             recommendationsMatchData: recommendations.length === qualifyingRecommendations.length,
+            recommendationsCountMatchesData: recommendationsCount === qualifyingRecommendations.length.toLocaleString(),
+            recommendationsNavAccessible: recommendationsNav?.getAttribute("aria-label") === "Recommendations, " + qualifyingRecommendations.length.toLocaleString() + " available",
             recommendationsSorted: recommendationSavings.every((value,index) => index === 0 || recommendationSavings[index - 1] >= value),
             recommendationsMaterial: recommendationSavings.every((value) => Number.isFinite(value) && value >= 100000),
             recommendationIconsMissing: recommendations.filter((element) => !element.querySelector(".recommendation-icon svg")).length,
@@ -241,6 +245,9 @@ try {
             treemapTiles: document.querySelectorAll("#bundle-map .treemap-block, #bundle-map .treemap-group").length,
             overlappingTilePairs,
             treemapLayers: document.querySelectorAll("#bundle-map .treemap-layer").length,
+            hasMapRecommendationUI: Boolean(document.querySelector("#map-key, .map-recommendation-mark, #bundle-map .has-recommendation")),
+            bundleTreemapNavLabel: document.querySelector('[data-view="map"] > span:last-child')?.textContent.trim(),
+            bundleTreemapHeader: document.querySelector("#view-map .view-head h2")?.textContent.trim(),
             undersizedDrillTargets: [...document.querySelectorAll("#bundle-map button.treemap-block, #bundle-map .treemap-group-label")]
               .filter((element) => { const rect = element.getBoundingClientRect(); return rect.width < 23.9 || rect.height < 23.9; }).length,
             nativeParentTitles: [...document.querySelectorAll("#bundle-map .treemap-group-label")].filter((element) => element.title).length,
@@ -279,6 +286,8 @@ try {
     !reportUI?.binariesComplete ||
     reportUI?.binaryOpportunityColumns !== 2 ||
     !reportUI?.recommendationsMatchData ||
+    !reportUI?.recommendationsCountMatchesData ||
+    !reportUI?.recommendationsNavAccessible ||
     !reportUI?.recommendationsSorted ||
     !reportUI?.recommendationsMaterial ||
     reportUI?.recommendationIconsMissing > 0 ||
@@ -288,6 +297,9 @@ try {
     reportUI?.hasPotentialBadges ||
     reportUI?.overlappingTilePairs > 0 ||
     reportUI?.treemapLayers !== 1 ||
+    reportUI?.hasMapRecommendationUI ||
+    reportUI?.bundleTreemapNavLabel !== "Bundle treemap" ||
+    reportUI?.bundleTreemapHeader !== "Bundle treemap" ||
     reportUI?.undersizedDrillTargets > 0 ||
     reportUI?.nativeParentTitles > 0 ||
     reportUI?.blockingGroupFrames > 0 ||
