@@ -2476,7 +2476,7 @@
       const rows = cleanObjectArray(item.items);
       const count = Math.max(rows.length,Number(item.itemCount || 0));
       if (item.id === "duplicates") {
-        return ["Delete exact duplicate copies",`${count.toLocaleString()} removable group${count === 1 ? "" : "s"} inside runtime bundles.`];
+        return ["Duplication",`${count.toLocaleString()} exact-match group${count === 1 ? "" : "s"} within individual targets.`];
       }
       if (item.id === "asset-catalog-scales") {
         return ["Enable image thinning",`Move ${count.toLocaleString()} loose scale set${count === 1 ? "" : "s"} into .xcassets.`];
