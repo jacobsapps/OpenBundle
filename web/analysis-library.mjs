@@ -201,13 +201,22 @@ function normalizeReportCollections(input) {
     insight.items = objectArray(insight.items);
     for (const item of insight.items) {
       arrayField(item, "paths");
+      arrayField(item, "catalogPaths");
       item.variants = objectArray(item.variants);
+      item.assetGroups = objectArray(item.assetGroups);
+      for (const group of item.assetGroups) {
+        arrayField(group, "paths");
+        arrayField(group, "catalogPaths");
+      }
     }
   }
 
   input.architecture = plainObject(input.architecture);
   input.architecture.targets = objectArray(input.architecture.targets);
   input.architecture.frameworks = objectArray(input.architecture.frameworks);
+  input.architecture.linkingReviews = objectArray(
+    input.architecture.linkingReviews,
+  );
   input.architecture.duplicateComponents = objectArray(
     input.architecture.duplicateComponents,
   );

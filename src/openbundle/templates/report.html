@@ -21,6 +21,10 @@
       --orange: #ff6719;
       --orange-soft: #ff9b63;
       --green: #42c989;
+      --duplicate: #ff3957;
+      --duplicate-strong: #ff163d;
+      --duplicate-deep: #8d1028;
+      --duplicate-soft: rgba(255,57,87,.14);
       --display: Georgia, "Times New Roman", serif;
       --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --shadow: 0 24px 70px rgba(0,0,0,.28);
@@ -428,6 +432,37 @@
     }
     .treemap-block.leaf { cursor: default; }
     .treemap-block:hover, .treemap-block:focus-visible { outline: 2px solid white; outline-offset: -2px; }
+    .treemap-group.exact-duplicate,
+    .treemap-group-label.exact-duplicate,
+    .treemap-block.exact-duplicate,
+    .treemap-group.repeated-assets,
+    .treemap-group-label.repeated-assets,
+    .treemap-block.repeated-assets {
+      border-color: var(--duplicate-strong);
+      background: linear-gradient(145deg,#ff163d,#b70d30);
+      box-shadow:
+        inset 0 0 0 2px var(--duplicate-strong),
+        inset 0 0 22px rgba(255,255,255,.08),
+        0 0 0 1px rgba(255,22,61,.55);
+    }
+    .treemap-group.contains-duplicates,
+    .treemap-group-label.contains-duplicates,
+    .treemap-block.contains-duplicates {
+      border-color: var(--duplicate);
+      box-shadow:
+        inset 0 0 0 2px var(--duplicate),
+        inset 0 0 0 999px rgba(255,57,87,.05);
+    }
+    .treemap-group-label.exact-duplicate { border-left-color: #ff8294; }
+    .treemap-group-label.repeated-assets { border-left-color: #ff8294; background-image: repeating-linear-gradient(135deg,rgba(255,255,255,.08) 0 6px,transparent 6px 12px); }
+    .treemap-block.exact-duplicate:hover,
+    .treemap-block.exact-duplicate:focus-visible,
+    .treemap-group-label.exact-duplicate:hover,
+    .treemap-group-label.exact-duplicate:focus-visible,
+    .treemap-block.repeated-assets:hover,
+    .treemap-block.repeated-assets:focus-visible,
+    .treemap-group-label.repeated-assets:hover,
+    .treemap-group-label.repeated-assets:focus-visible { outline-color: #ffdce2; }
     .tile-copy {
       position: absolute;
       inset: 7px 8px auto;
@@ -450,7 +485,31 @@
       font-size: 10px;
       font-variant-numeric: tabular-nums;
     }
-    .treemap-block.micro {
+    .tile-duplicate-label,
+    .group-duplicate-label {
+      display: inline-flex;
+      align-items: center;
+      width: max-content;
+      max-width: 100%;
+      margin-top: 5px;
+      padding: 2px 5px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.4);
+      border-radius: 4px;
+      color: white;
+      background: rgba(74,0,17,.55);
+      font-size: 8px;
+      font-style: normal;
+      font-weight: 850;
+      letter-spacing: .035em;
+      line-height: 1.15;
+      text-overflow: ellipsis;
+      text-shadow: none;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .group-duplicate-label { margin: 0; flex: 0 1 auto; }
+    .treemap-block.micro:not(.exact-duplicate):not(.repeated-assets):not(.contains-duplicates) {
       border-radius: 0;
       box-shadow: inset 0 0 0 999px rgba(20,17,16,var(--shade,.03));
     }
@@ -471,6 +530,31 @@
       font-size: 20px;
     }
     .contents-list { display: grid; }
+    .duplicate-map-key {
+      display: grid;
+      gap: 7px;
+      margin-top: 14px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line);
+    }
+    .duplicate-key-row {
+      display: grid;
+      grid-template-columns: 15px minmax(0,1fr);
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .duplicate-key-mark {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--duplicate);
+      border-radius: 4px;
+    }
+    .duplicate-key-mark.direct { background: linear-gradient(145deg,#ff163d,#b70d30); box-shadow: inset 0 0 0 1px #ff8a9c; }
+    .duplicate-key-mark.repeated { background: repeating-linear-gradient(135deg,#ff163d 0 4px,#b70d30 4px 8px); box-shadow: inset 0 0 0 1px #ff8a9c; }
+    .duplicate-key-mark.container { background: rgba(255,57,87,.05); box-shadow: inset 0 0 0 2px rgba(255,57,87,.16); }
     .content-row {
       display: grid;
       grid-template-columns: 10px minmax(0,1fr) auto;
@@ -550,6 +634,55 @@
     .recommendation p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
     .recommendation-saving { padding-left: 15px; text-align: right; white-space: nowrap; }
     .recommendation-saving strong { display: block; font-family: var(--display); font-size: 20px; line-height: 1; }
+    .recommendation-saving span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 8px;
+      font-weight: 850;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .recommendation-subsection {
+      display: grid;
+      gap: 9px;
+      margin-top: 17px;
+      padding-top: 17px;
+      border-top: 1px solid var(--line);
+    }
+    .recommendation-subsection-head {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .recommendation-subsection-head h3 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 21px;
+    }
+    .linking-review-facts { display: grid; gap: 7px; }
+    .linking-review-fact {
+      display: grid;
+      grid-template-columns: 72px minmax(0,1fr) auto;
+      gap: 10px;
+      align-items: baseline;
+      min-height: 24px;
+      padding-bottom: 7px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .linking-review-fact code {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .linking-review-fact strong { color: var(--text); font-size: 10px; }
+    .linking-review-action { margin: 10px 0 0 !important; color: var(--text) !important; }
     .recommendation-details {
       padding: 12px 17px 17px 75px;
       border-top: 1px solid var(--line);
@@ -603,6 +736,61 @@
       color: var(--muted);
       font-size: 10px;
       line-height: 1.3;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .duplicate-evidence-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 5px;
+    }
+    .duplicate-type-badge,
+    .duplicate-group-badge,
+    .duplicate-actionability,
+    .image-exact-match {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 8px;
+      font-weight: 850;
+      letter-spacing: .035em;
+      line-height: 1.1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .evidence-primary .duplicate-type-badge,
+    .evidence-primary .duplicate-group-badge,
+    .evidence-primary .duplicate-actionability {
+      display: inline-flex;
+      margin: 0;
+      overflow: visible;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+    .duplicate-type-badge { color: white; background: var(--duplicate-deep); }
+    .duplicate-type-badge svg { width: 12px; height: 12px; margin-right: 4px; }
+    .duplicate-group-badge { color: #ffdce2; border: 1px solid rgba(255,57,87,.58); background: rgba(255,57,87,.1); font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .duplicate-actionability { color: #ffd4db; background: rgba(255,57,87,.12); }
+    .duplicate-catalog-summary {
+      display: grid;
+      gap: 7px;
+      padding: 9px 11px 11px;
+      border-top: 1px solid var(--line);
+      background: rgba(255,57,87,.035);
+    }
+    .duplicate-catalog-summary > strong { color: #ffdce2; font-size: 10px; }
+    .duplicate-asset-groups { display: flex; flex-wrap: wrap; gap: 5px; }
+    .duplicate-asset-group {
+      max-width: 100%;
+      overflow: hidden;
+      padding: 3px 6px;
+      border: 1px solid rgba(255,57,87,.28);
+      border-radius: 5px;
+      color: var(--muted);
+      font-size: 9px;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
@@ -773,7 +961,14 @@
     .rendition-copy { min-width: 0; }
     .rendition-copy strong { display: block; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
     .rendition-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; color: var(--faint); font-size: 9px; }
-    .rendition-duplicate { color: #ff7a85; font-weight: 750; }
+    .rendition-duplicate,
+    .image-exact-match {
+      color: white;
+      background: var(--duplicate-deep);
+      font-weight: 850;
+    }
+    .rendition-duplicate { padding: 2px 5px; border-radius: 4px; letter-spacing: .025em; text-transform: uppercase; }
+    .image-row-copy .image-exact-match { width: max-content; max-width: 100%; margin-top: 5px; color: white; background: var(--duplicate-deep); }
     .rendition-size { text-align: right; white-space: nowrap; }
     .rendition-size strong { display: block; font-size: 10px; font-variant-numeric: tabular-nums; }
     .show-more {
@@ -895,7 +1090,6 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .architecture-tag.candidate { color: #ffc39f; background: rgba(255,103,25,.14); }
     .architecture-tag.duplicate { color: #ffabb3; background: rgba(236,91,103,.14); }
     .architecture-paths { display: grid; gap: 2px; }
     .architecture-paths span { overflow: hidden; color: var(--faint); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
@@ -915,6 +1109,13 @@
       transition: transform 150ms ease;
     }
     .architecture-duplicate-item[open] .architecture-disclosure { transform: rotate(90deg); }
+    .architecture-duplicate-item { --duplicate-row-tone: var(--duplicate); }
+    .architecture-duplicate-item > summary { box-shadow: inset 3px 0 var(--duplicate-row-tone); }
+    .architecture-duplicate-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
+    .architecture-duplicate-badges .duplicate-type-badge,
+    .architecture-duplicate-badges .duplicate-group-badge,
+    .architecture-duplicate-badges .duplicate-actionability { min-height: 18px; font-size: 7px; }
+    .architecture-section-note { margin: 2px 0 0; color: var(--faint); font-size: 9px; font-weight: 500; }
     .architecture-location-list {
       display: grid;
       gap: 0;
@@ -1398,6 +1599,7 @@
       }
       .contents-card h3 { display: none; }
       .contents-list { width: max-content; display: flex; gap: 5px; }
+      .duplicate-map-key { width: max-content; display: flex; gap: 10px; margin: 0 0 0 8px; padding: 6px 4px; border: 0; }
       .content-row {
         display: inline-flex;
         gap: 6px;
@@ -1439,6 +1641,7 @@
       }
       .contents-card h3 { display: none; }
       .contents-list { width: max-content; display: flex; gap: 5px; }
+      .duplicate-map-key { width: max-content; display: flex; gap: 10px; margin: 0 0 0 8px; padding: 6px 4px; border: 0; }
       .content-row {
         display: inline-flex;
         gap: 6px;
@@ -1512,8 +1715,13 @@
       .recommendation-icon { width: 40px; height: 40px; }
       .recommendation-saving { grid-column: 2; padding: 0; text-align: left; }
       .recommendation-saving strong { display: inline; font-size: 16px; }
+      .recommendation-saving span { display: inline; margin: 0 0 0 6px; }
       .recommendation-chevron { grid-column: 3; grid-row: 1 / span 2; }
       .recommendation-details { padding: 12px; }
+      .recommendation-subsection-head { align-items: flex-start; }
+      .recommendation-subsection-head .architecture-link { display: inline-flex; }
+      .linking-review-fact { grid-template-columns: 62px minmax(0,1fr); }
+      .linking-review-fact strong { grid-column: 2; }
       .recommendation-evidence > summary,
       .recommendation-evidence-static { padding-inline: 9px; }
       .locales-row {
@@ -1606,6 +1814,11 @@
           <aside class="contents-card">
             <h3>Contents</h3>
             <div class="contents-list" id="contents-list"></div>
+            <div class="duplicate-map-key" id="duplicate-map-key" aria-label="Duplicate treemap key" hidden>
+              <div class="duplicate-key-row"><i class="duplicate-key-mark direct" aria-hidden="true"></i><span>Exact duplicate</span></div>
+              <div class="duplicate-key-row" id="duplicate-key-repeated" hidden><i class="duplicate-key-mark repeated" aria-hidden="true"></i><span>Repeated assets</span></div>
+              <div class="duplicate-key-row"><i class="duplicate-key-mark container" aria-hidden="true"></i><span>Contains duplicates</span></div>
+            </div>
           </aside>
         </div>
       </section>
@@ -1669,6 +1882,12 @@
     const QUALIFYING_INSIGHTS = [...REPORT.insights]
       .filter(item => typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000)
       .sort((a,b) => b.savings - a.savings || String(a.title || a.id).localeCompare(String(b.title || b.id)));
+    const LINKING_REVIEWS = (Array.isArray(REPORT.architecture?.linkingReviews)
+      ? REPORT.architecture.linkingReviews
+      : [])
+      .filter(item => item && typeof item === "object" && Number.isFinite(Number(item.reviewScopeBytes)) && Number(item.reviewScopeBytes) > 0)
+      .sort((a,b) => Number(b.reviewScopeBytes) - Number(a.reviewScopeBytes) || String(a.path || a.name).localeCompare(String(b.path || b.name)))
+      .slice(0,3);
     const recommendationsNav = document.querySelector('[data-view="insights"]');
     document.getElementById("recommendations-count").textContent = QUALIFYING_INSIGHTS.length.toLocaleString();
     recommendationsNav.setAttribute("aria-label",`Recommendations, ${QUALIFYING_INSIGHTS.length.toLocaleString()} available`);
@@ -1710,6 +1929,87 @@
       for (const character of String(value || "")) { result ^= character.charCodeAt(0); result = Math.imul(result,16777619); }
       return result >>> 0;
     };
+    const DUPLICATE_TYPES = new Set(["file","catalog","component","asset"]);
+    const DUPLICATE_TYPE_LABELS = {
+      file:"Whole file",
+      catalog:"Asset catalog",
+      component:"Component",
+      asset:"Individual asset"
+    };
+    const duplicateGroup = item => String(
+      item?.group
+      || item?.duplicateGroup
+      || item?.duplicateCatalogGroup
+      || item?.metadata?.duplicateCatalogGroup
+      || ""
+    );
+    function duplicateType(item = {}) {
+      const explicit = String(item.duplicateType || item.metadata?.duplicateType || "").toLowerCase();
+      if (DUPLICATE_TYPES.has(explicit)) return explicit;
+      const kind = String(item.kind || item.category || "").toLowerCase();
+      const paths = [
+        ...(Array.isArray(item.catalogPaths) ? item.catalogPaths : []),
+        ...(Array.isArray(item.paths) ? item.paths : []),
+        item.path || ""
+      ].map(value => String(value).toLowerCase());
+      if (
+        item.duplicateCatalogGroup
+        || item.metadata?.duplicateCatalogGroup
+        || Array.isArray(item.catalogPaths)
+        || Array.isArray(item.assetGroups)
+        || kind.includes("catalog")
+        || paths.some(path => path.endsWith(".car"))
+      ) return "catalog";
+      if (kind.includes("asset") || kind.includes("rendition") || paths.some(path => path.includes("::"))) return "asset";
+      if (["component","framework","bundle","appex","app","module"].some(value => kind.includes(value))) return "component";
+      return "file";
+    }
+    function duplicateTypeIcon(type) {
+      const paths = {
+        file:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M3 7v14h11"/>',
+        catalog:'<rect x="5" y="4" width="15" height="16" rx="2"/><rect x="8" y="7" width="3" height="3" rx=".5"/><rect x="14" y="7" width="3" height="3" rx=".5"/><rect x="8" y="13" width="3" height="3" rx=".5"/><rect x="14" y="13" width="3" height="3" rx=".5"/><path d="M2 7v14h15"/>',
+        component:'<path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"/><path d="m4 12 8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>',
+        asset:'<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m6 17 4-4 3 3 2-2 3 3M2 8v13h15"/>'
+      };
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[type] || paths.file}</svg>`;
+    }
+    const duplicateTypeBadge = item => {
+      const type = duplicateType(item);
+      return `<span class="duplicate-type-badge">${duplicateTypeIcon(type)}${esc(DUPLICATE_TYPE_LABELS[type])}</span>`;
+    };
+    const nodeDuplicateGroup = node => duplicateGroup(node);
+    const nodeIsRepeatedAssetCluster = node => duplicateType(node) === "catalog" && (
+      node?.exactMatch === false
+      || node?.metadata?.exactMatch === false
+      || Boolean(node?.duplicateCatalogGroup || node?.metadata?.duplicateCatalogGroup)
+    );
+    function nodeDuplicateSummary(node) {
+      const childSummary = (node?.children || []).reduce((total,child) => {
+        if (nodeDuplicateGroup(child)) {
+          if (nodeIsRepeatedAssetCluster(child)) total.repeatedAssets += 1;
+          else total.exact += 1;
+          return total;
+        }
+        const nested = nodeDuplicateSummary(child);
+        total.exact += nested.exact;
+        total.repeatedAssets += nested.repeatedAssets;
+        return total;
+      },{exact:0,repeatedAssets:0});
+      if (childSummary.exact || childSummary.repeatedAssets) return childSummary;
+      const declared = Math.max(0,Number(node?.metadata?.duplicateCount || 0));
+      if (!declared) return childSummary;
+      if (nodeIsRepeatedAssetCluster(node) || Number(node?.metadata?.repeatedAssetCount || 0) > 0) childSummary.repeatedAssets = declared;
+      else childSummary.exact = declared;
+      return childSummary;
+    }
+    const nodeHasDuplicateEvidence = node => {
+      const summary = nodeDuplicateSummary(node);
+      return Boolean(nodeDuplicateGroup(node) || summary.exact || summary.repeatedAssets);
+    };
+    const nodeHasRepeatedAssetEvidence = node => Boolean(
+      (nodeDuplicateGroup(node) && nodeIsRepeatedAssetCluster(node))
+      || nodeDuplicateSummary(node).repeatedAssets
+    );
     const app = REPORT.app;
     const metrics = REPORT.metrics;
     const CAPABILITY_DECLARATIONS = REPORT.capabilities?.declarations || {};
@@ -1946,6 +2246,8 @@
       map.replaceChildren();
       map.classList.remove("animating");
       map.setAttribute("aria-label",`${root.name}, unpacked bundle size treemap`);
+      document.getElementById("duplicate-map-key").hidden = !nodeHasDuplicateEvidence(root);
+      document.getElementById("duplicate-key-repeated").hidden = !nodeHasRepeatedAssetEvidence(root);
       renderCrumbs();
       document.getElementById("contents-list").innerHTML = categoryTotals(root).map(([id,value]) => `
         <div class="content-row"><i style="--swatch:${SWATCHES[id] || SWATCHES.other}"></i><strong>${esc(categoryName(id))}</strong><span>${fmt(value)}</span></div>`).join("");
@@ -1970,20 +2272,37 @@
         const {node,depth} = entry;
         const color = nodeColor(node);
         const size = nodeSize(node);
-        const title = `${node.path || node.name}\n${fmt(size)}`;
+        const directDuplicateGroup = nodeDuplicateGroup(node);
+        const directRepeatedAssets = Boolean(directDuplicateGroup && nodeIsRepeatedAssetCluster(node));
+        const containedDuplicates = directDuplicateGroup ? {exact:0,repeatedAssets:0} : nodeDuplicateSummary(node);
+        const containedDuplicateCount = containedDuplicates.exact + containedDuplicates.repeatedAssets;
+        const duplicateState = directDuplicateGroup ? (directRepeatedAssets ? "repeated-assets" : "exact-duplicate") : containedDuplicateCount ? "contains-duplicates" : "";
+        const duplicateDescription = directDuplicateGroup
+          ? `${directRepeatedAssets ? "Repeated assets" : "Exact duplicate"} ${directDuplicateGroup}`
+          : containedDuplicates.exact && containedDuplicates.repeatedAssets
+            ? `Contains ${containedDuplicates.exact.toLocaleString()} exact duplicate${containedDuplicates.exact === 1 ? "" : "s"} and repeated assets in ${containedDuplicates.repeatedAssets.toLocaleString()} catalog cluster${containedDuplicates.repeatedAssets === 1 ? "" : "s"}`
+            : containedDuplicates.exact
+              ? `Contains ${containedDuplicates.exact.toLocaleString()} exact duplicate${containedDuplicates.exact === 1 ? "" : "s"}`
+              : containedDuplicates.repeatedAssets
+                ? `Contains repeated assets in ${containedDuplicates.repeatedAssets.toLocaleString()} catalog cluster${containedDuplicates.repeatedAssets === 1 ? "" : "s"}`
+                : "";
+        const directDuplicateLabel = `${directRepeatedAssets ? "Repeated assets" : "Exact duplicate"} ${directDuplicateGroup}`;
+        const title = `${node.path || node.name}\n${fmt(size)}${duplicateDescription ? `\n${duplicateDescription}` : ""}`;
         if (entry.nested) {
           const frame = document.createElement("div");
-          frame.className = "treemap-group";
+          frame.className = `treemap-group${duplicateState ? ` ${duplicateState}` : ""}`;
           frame.dataset.nodePath = node.path || "";
+          if (directDuplicateGroup) frame.dataset.duplicateGroup = directDuplicateGroup;
           frame.style.cssText = `left:${entry.x}px;top:${entry.y}px;width:${entry.width}px;height:${entry.height}px;--tile:${color};z-index:${1 + depth * 3}`;
           layer.appendChild(frame);
           const label = document.createElement("button");
           label.type = "button";
-          label.className = "treemap-group-label";
+          label.className = `treemap-group-label${duplicateState ? ` ${duplicateState}` : ""}`;
           label.dataset.nodePath = node.path || "";
-          label.setAttribute("aria-label",`Open ${node.name}, ${fmt(size)}`);
+          if (directDuplicateGroup) label.dataset.duplicateGroup = directDuplicateGroup;
+          label.setAttribute("aria-label",`Open ${node.name}, ${fmt(size)}${duplicateDescription ? `, ${duplicateDescription}` : ""}`);
           label.style.cssText = `left:${entry.x + 2}px;top:${entry.y + 2}px;width:${Math.max(0,entry.width - 4)}px;height:${Math.max(17,entry.labelHeight - 4)}px;--tile:${color};z-index:${25 + depth * 3}`;
-          label.innerHTML = `<span>${esc(node.name)}</span><span>${fmt(size)}<b>›</b></span>`;
+          label.innerHTML = `<span>${esc(node.name)}</span><span>${directDuplicateGroup ? `<em class="group-duplicate-label">${esc(directDuplicateLabel)}</em>` : ""}${fmt(size)}<b>›</b></span>`;
           label.addEventListener("pointerenter",() => showGroupFrame(entry));
           label.addEventListener("pointerleave",() => { if (!label.matches(":focus")) hideGroupFrame(); });
           label.addEventListener("focus",() => showGroupFrame(entry));
@@ -1998,13 +2317,14 @@
         if (drillable) element.type = "button";
         else element.setAttribute("role","img");
         const micro = entry.width < 8 || entry.height < 8 || entry.width * entry.height < 80;
-        element.className = `treemap-block${drillable ? "" : " leaf"}${micro ? " micro" : ""}`;
+        element.className = `treemap-block${drillable ? "" : " leaf"}${micro ? " micro" : ""}${duplicateState ? ` ${duplicateState}` : ""}`;
         element.dataset.nodePath = node.path || "";
+        if (directDuplicateGroup) element.dataset.duplicateGroup = directDuplicateGroup;
         element.title = title;
-        element.setAttribute("aria-label",`${node.name}, ${fmt(size)}${drillable ? ", open group" : ""}`);
+        element.setAttribute("aria-label",`${node.name}, ${fmt(size)}${duplicateDescription ? `, ${duplicateDescription}` : ""}${drillable ? ", open group" : ""}`);
         element.style.cssText = `left:${entry.x}px;top:${entry.y}px;width:${entry.width}px;height:${entry.height}px;--tile:${color};--shade:${Math.min(.17,.02 + depth * .045)};--tile-font:${Math.max(11,Math.min(15,Math.sqrt(entry.width * entry.height) / 15))}px;z-index:${5 + depth * 3}`;
         if (entry.width >= 48 && entry.height >= 26) {
-          element.innerHTML = `<span class="tile-copy"><span class="tile-name">${esc(node.name)}</span>${entry.width >= 84 && entry.height >= 46 ? `<span class="tile-size">${fmt(size)}</span>` : ""}</span>`;
+          element.innerHTML = `<span class="tile-copy"><span class="tile-name">${esc(node.name)}</span>${entry.width >= 84 && entry.height >= 46 ? `<span class="tile-size">${fmt(size)}</span>` : ""}${directDuplicateGroup && entry.width >= 82 && entry.height >= 50 ? `<span class="tile-duplicate-label">${esc(directDuplicateLabel)}</span>` : ""}</span>`;
         }
         if (drillable) element.addEventListener("click",() => openGroup(node,entry));
         layer.appendChild(element);
@@ -2098,7 +2418,7 @@
       "alternate-icons":"appicon", "complex-vectors":"vector", "simulator-architectures":"cpu",
       "debug-frameworks":"bug",
       "unnecessary-files":"trash", "lottie-library":"animation", "similar-lotties":"animation",
-      "audit-sdk-google":"blocks"
+      "audit-sdk-google":"blocks", "static-or-mergeable":"blocks"
     };
     const ICONS = {
       export:'<path d="M8 16 16 8m-6 0h6v6M5 5h6M5 5v14h14v-6"/>',
@@ -2156,7 +2476,7 @@
       const rows = cleanObjectArray(item.items);
       const count = Math.max(rows.length,Number(item.itemCount || 0));
       if (item.id === "duplicates") {
-        return ["Remove duplicate files",`${count.toLocaleString()} exact group${count === 1 ? "" : "s"}.`];
+        return ["Delete exact duplicate copies",`${count.toLocaleString()} removable group${count === 1 ? "" : "s"} inside runtime bundles.`];
       }
       if (item.id === "asset-catalog-scales") {
         return ["Enable image thinning",`Move ${count.toLocaleString()} loose scale set${count === 1 ? "" : "s"} into .xcassets.`];
@@ -2165,8 +2485,11 @@
     }
     function evidenceMeta(item,row,paths,variants) {
       if (item.id === "duplicates") {
-        const count = Math.max(paths.length,Number(row.pathCount || 0));
-        return `${count.toLocaleString()} cop${count === 1 ? "y" : "ies"}`;
+        const type = duplicateType(row);
+        const count = Math.max(paths.length,Number(row.copies || 0),Number(row.pathCount || 0),Number(row.catalogCount || 0));
+        const repeatedAssets = Math.max(0,Number(row.repeatedAssetCount || 0),Array.isArray(row.assetGroups) ? row.assetGroups.length : 0);
+        if (type === "catalog") return `${count.toLocaleString()} catalog${count === 1 ? "" : "s"}${repeatedAssets ? ` · ${repeatedAssets.toLocaleString()} repeated asset${repeatedAssets === 1 ? "" : "s"}` : ""}`;
+        return `${count.toLocaleString()} exact cop${count === 1 ? "y" : "ies"}`;
       }
       if (item.id === "asset-catalog-scales") return parentPath(row.path);
       if (Number.isFinite(Number(row.optimizedSize)) && Number.isFinite(Number(row.size))) {
@@ -2180,35 +2503,60 @@
       if (variants.length) return `${variants.length.toLocaleString()} scales`;
       return String(row.path || paths[0] || "");
     }
-    function evidenceBody(row,paths,variants) {
+    function evidenceBody(item,row,paths,variants) {
       const values = variants.length
         ? variants.map(variant => ({
             path:String(variant.path || ""),
             value:`${Number(variant.scale || 0)}×  ${fmt(variant.size)}`
           }))
         : paths.map(path => ({path,value:Number.isFinite(Number(row.size)) ? fmt(row.size) : ""}));
-      const omitted = Math.max(0,Number(row.pathsOmitted || 0),Number(row.pathCount || 0) - paths.length);
-      return `<div class="evidence-paths">${values.map(value => `
+      const omitted = Math.max(0,Number(row.pathsOmitted || 0),Number(row.catalogPathsOmitted || 0),Number(row.pathCount || 0) - paths.length,Number(row.catalogCount || 0) - paths.length);
+      const pathBody = `<div class="evidence-paths">${values.map(value => `
         <div class="evidence-path"><code>${esc(value.path)}</code>${value.value ? `<span>${esc(value.value)}</span>` : ""}</div>`).join("")}${omitted ? `<div class="evidence-path"><code>${omitted.toLocaleString()} paths omitted</code></div>` : ""}</div>`;
+      if (item.id !== "duplicates" || duplicateType(row) !== "catalog") return pathBody;
+      const rawGroups = Array.isArray(row.assetGroups) ? row.assetGroups : [];
+      const repeatedAssets = Math.max(0,Number(row.repeatedAssetCount || 0),rawGroups.length);
+      if (!repeatedAssets && !rawGroups.length) return pathBody;
+      const groupLabels = rawGroups.slice(0,8).map((group,index) => {
+        if (group && typeof group === "object") {
+          const id = duplicateGroup(group);
+          return `${id ? `${id} · ` : ""}${String(group.name || group.assetName || `Asset ${index + 1}`)}`;
+        }
+        return String(group || `Asset ${index + 1}`);
+      });
+      return `${pathBody}<div class="duplicate-catalog-summary"><strong>${repeatedAssets.toLocaleString()} exact asset group${repeatedAssets === 1 ? "" : "s"} inside this catalog cluster</strong>${groupLabels.length ? `<div class="duplicate-asset-groups">${groupLabels.map(label => `<span class="duplicate-asset-group" title="${esc(label)}">${esc(label)}</span>`).join("")}${rawGroups.length > groupLabels.length ? `<span class="duplicate-asset-group">+${(rawGroups.length - groupLabels.length).toLocaleString()} more</span>` : ""}</div>` : ""}</div>`;
     }
     function recommendationEvidenceRow(item,row,index) {
       const variants = cleanObjectArray(row.variants);
-      const paths = cleanStringArray(row.paths);
+      const catalogPaths = cleanStringArray(row.catalogPaths);
+      const legacyPaths = cleanStringArray(row.paths);
+      const type = item.id === "duplicates" ? duplicateType(row) : "";
+      const paths = type === "catalog" && catalogPaths.length ? catalogPaths : legacyPaths;
       if (!paths.length && typeof row.path === "string" && row.path) paths.push(row.path);
       const path = String(row.path || paths[0] || "");
       const title = String(row.name || fileName(path) || `Item ${index + 1}`);
       const meta = evidenceMeta(item,row,paths,variants);
       const approximate = ["strip-symbols","exported-symbols","asset-catalog-scales"].includes(item.id) ? "~" : "";
       const saving = Number.isFinite(Number(row.savings)) ? `${approximate}${fmt(row.savings)}` : Number.isFinite(Number(row.size)) ? fmt(row.size) : "";
-      const expandable = variants.length > 0 || paths.length > 1;
+      const group = item.id === "duplicates" ? duplicateGroup(row) : "";
+      const duplicateAction = type === "catalog" && (row.exactMatch === false || Number(row.repeatedAssetCount || 0) > 0 || (Array.isArray(row.assetGroups) && row.assetGroups.length))
+        ? "Remove repeated source assets; rebuild catalogs"
+        : type === "component"
+          ? "Remove duplicate target membership"
+          : type === "asset"
+            ? "Delete the extra asset after updating references"
+            : "Delete extras after updating callers";
+      const duplicateBadges = item.id === "duplicates" ? `<div class="duplicate-evidence-badges">${duplicateTypeBadge(row)}${group ? `<span class="duplicate-group-badge">${esc(group)}</span>` : ""}<span class="duplicate-actionability">${duplicateAction}</span></div>` : "";
+      const expandable = variants.length > 0 || paths.length > 1 || Number(row.pathsOmitted || 0) > 0 || (type === "catalog" && (Number(row.catalogPathsOmitted || 0) > 0 || Number(row.repeatedAssetCount || 0) > 0 || (Array.isArray(row.assetGroups) && row.assetGroups.length)));
       const hidden = index >= RECOMMENDATION_EVIDENCE_LIMIT ? " hidden" : "";
-      const primary = `<div class="evidence-primary"><strong title="${esc(title)}">${esc(title)}</strong>${meta ? `<span title="${esc(meta)}">${esc(meta)}</span>` : ""}</div>`;
+      const attributes = item.id === "duplicates" ? ` data-duplicate-type="${esc(type)}"${group ? ` data-duplicate-group="${esc(group)}"` : ""}` : "";
+      const primary = `<div class="evidence-primary">${duplicateBadges}<strong title="${esc(title)}">${esc(title)}</strong>${meta ? `<span title="${esc(meta)}">${esc(meta)}</span>` : ""}</div>`;
       if (!expandable) {
-        return `<div class="recommendation-evidence recommendation-evidence-static" tabindex="-1"${hidden}>${primary}${saving ? `<span class="evidence-saving">${saving}</span>` : ""}</div>`;
+        return `<div class="recommendation-evidence recommendation-evidence-static" tabindex="-1"${attributes}${hidden}>${primary}${saving ? `<span class="evidence-saving">${saving}</span>` : ""}</div>`;
       }
-      return `<details class="recommendation-evidence"${hidden}>
+      return `<details class="recommendation-evidence"${attributes}${hidden}>
         <summary>${primary}${saving ? `<span class="evidence-saving">${saving}</span>` : "<span></span>"}<span class="evidence-chevron" aria-hidden="true">›</span></summary>
-        ${evidenceBody(row,paths,variants)}
+        ${evidenceBody(item,row,paths,variants)}
       </details>`;
     }
     function recommendationDetails(item) {
@@ -2226,9 +2574,35 @@
         ${more}${omitted ? `<span class="recommendation-evidence-count">${omitted.toLocaleString()} ${omittedLabel} omitted</span>` : ""}
       </div>`;
     }
+    function linkingReviewCard(review) {
+      const name = String(review.name || fileName(review.path) || "Framework");
+      const consumerName = String(review.consumerName || fileName(review.consumer) || "one target");
+      const path = String(review.path || "");
+      const consumer = String(review.consumer || consumerName);
+      const consumerExecutable = fileName(consumer) || consumerName;
+      const frameworkSize = Number(review.frameworkSize || 0);
+      const resourceSize = Number(review.resourceSize || 0);
+      const action = String(review.action || "Test a static product or mergeable Release build, then compare archives.");
+      return `<details class="recommendation linking-review" data-linking-review="${esc(path)}" style="--tone:${TONES.other}">
+        <summary>
+          <span class="recommendation-icon">${iconSVG("static-or-mergeable")}</span>
+          <div class="recommendation-copy"><h3>Review ${esc(name)} linking</h3><p>Dynamic framework linked only by ${esc(consumerExecutable)}.</p></div>
+          <div class="recommendation-saving"><strong>${fmt(review.reviewScopeBytes)}</strong><span>binary</span></div>
+          <span class="recommendation-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="recommendation-details">
+          <div class="linking-review-facts">
+            <div class="linking-review-fact"><span>Framework</span><code title="${esc(path)}">${esc(path)}</code>${frameworkSize ? `<strong>${fmt(frameworkSize)}</strong>` : ""}</div>
+            <div class="linking-review-fact"><span>Linked by</span><code title="${esc(consumer)}">${esc(consumer)}</code></div>
+            ${resourceSize ? `<div class="linking-review-fact"><span>Resources</span><code>Bundled separately from the binary</code><strong>${fmt(resourceSize)}</strong></div>` : ""}
+          </div>
+          <p class="linking-review-action">${esc(action)}</p>
+        </div>
+      </details>`;
+    }
     function renderRecommendations() {
       const holder = document.getElementById("recommendations-list");
-      holder.innerHTML = QUALIFYING_INSIGHTS.map(item => {
+      const measured = QUALIFYING_INSIGHTS.map(item => {
         const copy = recommendationCopy(item);
         const estimate = ["strip-symbols","exported-symbols","asset-catalog-scales"].includes(item.id) ? "~" : "";
         const details = recommendationDetails(item);
@@ -2244,7 +2618,15 @@
           </summary>
           ${details}
         </details>`;
-      }).join("") || `<div class="empty-state">No recommendations.</div>`;
+      }).join("");
+      const reviews = LINKING_REVIEWS.length ? `<section class="recommendation-subsection" aria-labelledby="linking-reviews-title">
+        <header class="recommendation-subsection-head">
+          <h3 id="linking-reviews-title">Worth testing</h3>
+          <a class="architecture-link" href="https://blog.jacobstechtavern.com/p/static-dynamic-mergeable-oh-my" target="_blank" rel="noopener noreferrer">Static, dynamic &amp; mergeable <span aria-hidden="true">↗</span></a>
+        </header>
+        ${LINKING_REVIEWS.map(linkingReviewCard).join("")}
+      </section>` : "";
+      holder.innerHTML = measured || reviews ? `${measured}${reviews}` : `<div class="empty-state">No recommendations.</div>`;
       holder.querySelectorAll("[data-recommendation-more]").forEach(button => button.addEventListener("click",() => {
         const details = button.closest(".recommendation-details");
         const remaining = [...(details?.querySelectorAll(".recommendation-evidence[hidden]") || [])];
@@ -2292,19 +2674,25 @@
     function architectureTags(framework) {
       const tags = [];
       if (framework.linking) tags.push(`<span class="architecture-tag">${esc(framework.linking)}</span>`);
-      if (framework.staticCandidate) tags.push(`<span class="architecture-tag candidate">Review static / mergeable</span>`);
       if (framework.duplicateGroup) tags.push(`<span class="architecture-tag duplicate">Exact copy</span>`);
       return tags.join("");
     }
-    function architectureDuplicateRow(item,count,index) {
+    function architectureDuplicateRow(item,count,index,mode) {
       const allPaths = cleanStringArray(item.paths);
       const paths = allPaths.slice(0,50);
       const pathCount = Math.max(paths.length,Number(item.pathCount || allPaths.length));
       const pathsOmitted = Math.max(0,Number(item.pathsOmitted || 0),pathCount - paths.length);
       const summaryRemainder = Math.max(0,pathCount - 2);
-      return `<details class="architecture-duplicate-item"${index >= ARCHITECTURE_EVIDENCE_LIMIT ? " hidden" : ""}>
-        <summary class="architecture-row architecture-duplicate-row">
-          <div class="architecture-primary"><strong title="${esc(item.name)}"><span class="architecture-disclosure" aria-hidden="true">›</span>${esc(item.name)}</strong><span>${fmt(item.size)} each</span></div>
+      const type = mode === "component" && !item.duplicateType ? "component" : duplicateType(item);
+      const typedItem = {...item,duplicateType:type};
+      const group = duplicateGroup(item);
+      const actionability = mode === "cross-target" ? "review-every-runtime" : "review-target-membership";
+      const actionLabel = mode === "cross-target" ? "Review every runtime" : "Review target membership";
+      const name = String(item.name || fileName(paths[0]) || "Exact duplicate");
+      const aria = `${name}, ${DUPLICATE_TYPE_LABELS[type]}, exact duplicate${group ? ` group ${group}` : ""}, ${actionLabel.toLowerCase()}, ${fmt(item.size)} each`;
+      return `<details class="architecture-duplicate-item" data-duplicate-type="${esc(type)}" data-duplicate-actionability="${actionability}"${group ? ` data-duplicate-group="${esc(group)}"` : ""}${index >= ARCHITECTURE_EVIDENCE_LIMIT ? " hidden" : ""}>
+        <summary class="architecture-row architecture-duplicate-row" aria-label="${esc(aria)}">
+          <div class="architecture-primary"><div class="architecture-duplicate-badges">${duplicateTypeBadge(typedItem)}${group ? `<span class="duplicate-group-badge">${esc(group)}</span>` : ""}<span class="duplicate-actionability">${actionLabel}</span></div><strong title="${esc(name)}"><span class="architecture-disclosure" aria-hidden="true">›</span>${esc(name)}</strong><span>${fmt(item.size)} each</span></div>
           <div class="architecture-cell">${Number(count || 0).toLocaleString()}</div>
           <div class="architecture-paths">${paths.slice(0,2).map(path => `<span title="${esc(path)}">${esc(path)}</span>`).join("")}${summaryRemainder ? `<span>+${summaryRemainder.toLocaleString()}</span>` : ""}</div>
           <div class="architecture-size">${fmt(item.repeatedSize)}</div>
@@ -2350,20 +2738,20 @@
 
       const duplicateSection = architectureDuplicates.length ? `
         <section class="architecture-section">
-          <header class="architecture-section-head"><h3>Exact component copies</h3><span>${architectureDuplicates.length.toLocaleString()}</span></header>
+          <header class="architecture-section-head"><div><h3>Exact component copies</h3><p class="architecture-section-note">Matching component payloads; review target membership before deleting a copy.</p></div><span>${architectureDuplicates.length.toLocaleString()}</span></header>
           <div class="architecture-table">
-            <div class="architecture-row architecture-header architecture-duplicate-row"><span>Component</span><span>Copies</span><span>Locations</span><span>Repeated bytes</span></div>
-            ${architectureDuplicates.map((item,index) => architectureDuplicateRow(item,item.copies,index)).join("")}
+            <div class="architecture-row architecture-header architecture-duplicate-row"><span>Component</span><span>Copies</span><span>Locations</span><span>Repeated footprint</span></div>
+            ${architectureDuplicates.map((item,index) => architectureDuplicateRow(item,item.copies,index,"component")).join("")}
             ${architectureMore(architectureDuplicates)}
           </div>
         </section>` : "";
 
       const crossTargetDuplicateSection = architectureCrossTargetDuplicates.length ? `
         <section class="architecture-section">
-          <header class="architecture-section-head"><h3>Repeated files across targets</h3><span>${architectureCrossTargetDuplicateTotal.toLocaleString()}</span></header>
+          <header class="architecture-section-head"><div><h3>Repeated files across targets</h3><p class="architecture-section-note">Exact copies may be required by independently loaded runtimes; review every target before deleting.</p></div><span>${architectureCrossTargetDuplicateTotal.toLocaleString()}</span></header>
           <div class="architecture-table">
-            <div class="architecture-row architecture-header architecture-duplicate-row"><span>File</span><span>Targets</span><span>Locations</span><span>Repeated bytes</span></div>
-            ${architectureCrossTargetDuplicates.map((item,index) => architectureDuplicateRow(item,item.targetCount,index)).join("")}
+            <div class="architecture-row architecture-header architecture-duplicate-row"><span>File</span><span>Targets</span><span>Locations</span><span>Repeated footprint</span></div>
+            ${architectureCrossTargetDuplicates.map((item,index) => architectureDuplicateRow(item,item.targetCount,index,"cross-target")).join("")}
             ${architectureMore(architectureCrossTargetDuplicates,architectureCrossTargetDuplicatesOmitted)}
           </div>
         </section>` : "";
@@ -2808,6 +3196,19 @@
       if (className) item.className = className;
       holder.appendChild(item);
     }
+    function imageDuplicateSummary(asset) {
+      const groups = [...new Set([
+        duplicateGroup(asset),
+        ...(asset.renditions || []).map(rendition => duplicateGroup(rendition))
+      ].filter(Boolean))];
+      const count = Math.max(groups.length,Number(asset.metadata?.duplicateCount || 0));
+      if (!count) return null;
+      const first = groups[0] || "";
+      const label = count === 1
+        ? `Exact match${first ? ` ${first}` : ""}`
+        : `${count.toLocaleString()} exact matches${first ? ` · ${first}${count > 1 ? ` +${count - 1}` : ""}` : ""}`;
+      return {count,groups,label};
+    }
     function renderRenditions(holder,asset) {
       const fragment = document.createDocumentFragment();
       const renditions = [...asset.renditions].sort((left,right) => Number(right.size || 0) - Number(left.size || 0));
@@ -2828,7 +3229,7 @@
         if (rendition.encoding) appendRenditionMetadata(metadata,String(rendition.encoding).toUpperCase());
         if (typeof rendition.opaque === "boolean") appendRenditionMetadata(metadata,rendition.opaque ? "Opaque" : "Alpha");
         if (rendition.optimizationMethod) appendRenditionMetadata(metadata,String(rendition.optimizationMethod));
-        if (rendition.duplicateGroup) appendRenditionMetadata(metadata,`Duplicate ${String(rendition.duplicateGroup)}`,"rendition-duplicate");
+        if (duplicateGroup(rendition)) appendRenditionMetadata(metadata,`Exact match ${duplicateGroup(rendition)}`,"rendition-duplicate");
         copy.appendChild(metadata);
 
         const size = document.createElement("div");
@@ -2853,6 +3254,7 @@
       document.getElementById("image-source-count").textContent = `${assets.length.toLocaleString()} image assets`;
       const list = document.getElementById("image-list");
       list.innerHTML = visibleAssets.map((asset,index) => {
+        const duplicate = imageDuplicateSummary(asset);
         const details = [];
         if (asset.source !== "loose-images" && ["all-images","potential-savings"].includes(source.id)) details.push(sourceLabel(asset.source));
         else if (asset.renditionCount > 1) details.push(`${asset.renditionCount.toLocaleString()} renditions`);
@@ -2862,10 +3264,12 @@
           ? `<span class="image-row-icon has-preview"><img src="${esc(asset.thumbnail)}" alt=""></span>`
           : `<span class="image-row-icon">${IMAGE_ICON}</span>`;
         const summary = `${visual}
-          <div class="image-row-copy"><strong>${esc(asset.name)}</strong><span>${esc(details.join("  "))}</span></div>
+          <div class="image-row-copy"><strong>${esc(asset.name)}</strong><span>${esc(details.join("  "))}</span>${duplicate ? `<span class="image-exact-match">${esc(duplicate.label)}</span>` : ""}</div>
           <div class="image-row-size"><strong>${fmt(asset.headlineSize)}</strong>${saving > 0 ? `<span>Save ${fmt(saving)}</span>` : ""}</div>`;
-        if (!asset.renditions.length) return `<div class="image-row" data-image-index="${index}" tabindex="-1" title="${esc(asset.path)}">${summary}</div>`;
-        return `<details class="image-asset" data-asset-index="${index}"><summary class="image-row" data-image-index="${index}" title="${esc(asset.path)}">${summary}</summary><div class="rendition-list"></div></details>`;
+        const duplicateAttributes = duplicate ? ` data-duplicate-count="${duplicate.count}"${duplicate.groups[0] ? ` data-duplicate-group="${esc(duplicate.groups[0])}"` : ""}` : "";
+        const aria = duplicate ? ` aria-label="${esc(`${asset.name}, ${duplicate.label}, ${fmt(asset.headlineSize)}`)}"` : "";
+        if (!asset.renditions.length) return `<div class="image-row" data-image-index="${index}" tabindex="-1" title="${esc(asset.path)}"${duplicateAttributes}${aria}>${summary}</div>`;
+        return `<details class="image-asset" data-asset-index="${index}"${duplicateAttributes}><summary class="image-row" data-image-index="${index}" title="${esc(asset.path)}"${aria}>${summary}</summary><div class="rendition-list"></div></details>`;
       }).join("") + (assets.length > imageLimit ? `<button class="show-more" id="show-more-images">Show more</button>` : "") || `<div class="empty-state">No images found.</div>`;
       list.querySelectorAll(".image-asset[data-asset-index]").forEach(element => element.addEventListener("toggle",() => {
         if (!element.open || element.dataset.renditionsRendered === "true") return;

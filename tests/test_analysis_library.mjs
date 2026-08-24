@@ -433,7 +433,12 @@ test("normalizes malformed nested renderer collections", () => {
       id: "duplicates",
       savings: 120_000,
       paths: "root.dat",
-      items: [{ paths: "copy.dat", variants: "2x" }],
+      items: [{
+        paths: "copy.dat",
+        catalogPaths: "Assets.car",
+        variants: "2x",
+        assetGroups: [{ paths: "asset.png", catalogPaths: "Assets.car" }],
+      }],
     },
   ];
   value.capabilities.declarations = {
@@ -449,6 +454,7 @@ test("normalizes malformed nested renderer collections", () => {
   value.architecture = {
     targets: [],
     frameworks: [{ consumers: "App" }],
+    linkingReviews: "Framework",
     duplicateComponents: [{ paths: "A.framework" }],
     crossTargetDuplicates: { items: [{ paths: "shared.js" }] },
   };
@@ -460,11 +466,15 @@ test("normalizes malformed nested renderer collections", () => {
   const normalized = validateAndNormalizeReport(value);
   assert.deepEqual(normalized.insights[0].paths, []);
   assert.deepEqual(normalized.insights[0].items[0].paths, []);
+  assert.deepEqual(normalized.insights[0].items[0].catalogPaths, []);
   assert.deepEqual(normalized.insights[0].items[0].variants, []);
+  assert.deepEqual(normalized.insights[0].items[0].assetGroups[0].paths, []);
+  assert.deepEqual(normalized.insights[0].items[0].assetGroups[0].catalogPaths, []);
   assert.deepEqual(normalized.capabilities.declarations.targets[0].permissions, []);
   assert.deepEqual(normalized.capabilities.declarations.targets[0].entitlements[0].values, []);
   assert.deepEqual(normalized.capabilities.declarations.privacyManifests[0].accessedAPIs[0].reasons, []);
   assert.deepEqual(normalized.architecture.frameworks[0].consumers, []);
+  assert.deepEqual(normalized.architecture.linkingReviews, []);
   assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].paths, []);
   assert.deepEqual(normalized.binaries.items[0].architectures[0].segments[0].sections, []);
   assert.deepEqual(normalized.locales.rows, []);

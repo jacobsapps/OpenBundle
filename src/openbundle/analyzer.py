@@ -35,6 +35,8 @@ LOCALIZATION_SUFFIXES = {".strings", ".stringsdict", ".xcstrings"}
 MIN_RECOMMENDATION_SAVINGS = 100_000
 MAX_INSIGHT_ITEMS = 500
 MAX_INSIGHT_PATHS = 1_000
+MIN_LINKING_REVIEW_BYTES = 2_000_000
+MAX_LINKING_REVIEWS = 3
 
 CATEGORY_LABELS = {
     "binary": "Binaries",
@@ -1357,20 +1359,31 @@ def _component_duplicate_groups(
         group_index += 1
         for path in paths:
             group_map[path] = group_id
+        # Component paths end at the bundle directory, while the scope helper
+        # normally receives a file below that directory. Add an inert child so
+        # an .appex/.app component is recognized as its own runtime boundary.
+        scopes = {_embedded_bundle_scope(f"{path}/_") for path in paths}
         items.append(
             {
                 "group": group_id,
                 "name": Path(paths[0]).name,
                 "kind": kind,
+                "duplicateType": "component",
+                "scope": "cross-target" if len(scopes) > 1 else "same-runtime",
+                "actionability": "review",
                 "size": size,
                 "copies": len(paths),
+                "pathCount": len(paths),
                 "paths": paths,
             }
         )
     return group_map, items
 
 
-def _cross_target_duplicate_inventory(records: list[Record]) -> dict[str, Any]:
+def _cross_target_duplicate_inventory(
+    records: list[Record],
+    component_duplicate_items: Iterable[dict[str, Any]] = (),
+) -> dict[str, Any]:
     """Return exact loose-file repetition that spans independent runtimes."""
 
     groups: dict[tuple[str, int], list[Record]] = {}
@@ -1378,12 +1391,33 @@ def _cross_target_duplicate_inventory(records: list[Record]) -> dict[str, Any]:
         if _is_duplicate_candidate(record):
             groups.setdefault((record.sha256, record.size), []).append(record)
 
-    items: list[dict[str, Any]] = []
+    grouped_items: list[tuple[dict[str, Any], list[Record]]] = []
+    component_roots = {
+        str(path): str(item.get("group") or "")
+        for item in component_duplicate_items
+        for path in item.get("paths", [])
+    }
+
+    def covering_component(path: str) -> str:
+        matches = [
+            (root, group_id)
+            for root, group_id in component_roots.items()
+            if path == root or path.startswith(f"{root}/")
+        ]
+        if not matches:
+            return ""
+        return max(matches, key=lambda value: len(value[0]))[1]
+
     for group in groups.values():
         scopes = {
             _embedded_bundle_scope(record.relative_path) for record in group
         }
         if len(scopes) < 2:
+            continue
+        covering_groups = {
+            covering_component(record.relative_path) for record in group
+        }
+        if len(covering_groups) == 1 and "" not in covering_groups:
             continue
         paths = sorted(
             (record.relative_path for record in group),
@@ -1392,30 +1426,46 @@ def _cross_target_duplicate_inventory(records: list[Record]) -> dict[str, Any]:
         names = {record.name for record in group}
         first_name = Path(paths[0]).name
         repeated_size = group[0].size * (len(scopes) - 1)
-        items.append(
-            {
-                "name": (
-                    first_name
-                    if len(names) == 1
-                    else f"{first_name} +{len(paths) - 1} exact matches"
-                ),
-                "kind": group[0].category,
-                "size": group[0].size,
-                "copies": len(group),
-                "targetCount": len(scopes),
-                "repeatedSize": repeated_size,
-                "pathCount": len(paths),
-                "paths": paths[:50],
-                "pathsOmitted": max(0, len(paths) - 50),
-            }
+        grouped_items.append(
+            (
+                {
+                    "name": (
+                        first_name
+                        if len(names) == 1
+                        else f"{first_name} +{len(paths) - 1} exact matches"
+                    ),
+                    "kind": group[0].category,
+                    "duplicateType": (
+                        "catalog"
+                        if group[0].category == "asset_catalog"
+                        else "file"
+                    ),
+                    "scope": "cross-target",
+                    "actionability": "review",
+                    "size": group[0].size,
+                    "copies": len(group),
+                    "targetCount": len(scopes),
+                    "repeatedSize": repeated_size,
+                    "pathCount": len(paths),
+                    "paths": paths[:50],
+                    "pathsOmitted": max(0, len(paths) - 50),
+                },
+                group,
+            )
         )
 
-    items.sort(
-        key=lambda item: (
-            -int(item["repeatedSize"]),
-            str(item["name"]).casefold(),
+    grouped_items.sort(
+        key=lambda value: (
+            -int(value[0]["repeatedSize"]),
+            str(value[0]["name"]).casefold(),
+            tuple(str(path) for path in value[0].get("paths", [])),
         )
     )
+    items: list[dict[str, Any]] = []
+    for index, (item, group) in enumerate(grouped_items, start=1):
+        group_id = f"X{index}"
+        item["group"] = group_id
+        items.append(item)
     return {
         "count": len(items),
         "totalRepeatedSize": sum(int(item["repeatedSize"]) for item in items),
@@ -1594,6 +1644,15 @@ def _architecture_inventory(
         )
         size = sum(record.size for record in bundled_records)
         compressed_size = sum(record.compressed_size for record in bundled_records)
+        architectures = (
+            list(binary.macho.get("architectures", []))
+            if binary and binary.macho
+            else []
+        )
+        all_slices_dynamic = bool(architectures) and all(
+            architecture.get("file_type") == "dynamic-library"
+            for architecture in architectures
+        )
         frameworks.append(
             {
                 "name": Path(root).name.removesuffix(".framework"),
@@ -1603,11 +1662,13 @@ def _architecture_inventory(
                 "size": size,
                 "compressedSize": compressed_size,
                 "binarySize": binary.size if binary else 0,
+                "binaryCompressedSize": binary.compressed_size if binary else 0,
                 "resourceSize": max(0, size - (binary.size if binary else 0)),
                 "consumerCount": len(consumers),
                 "consumers": consumers,
                 "consumerResolution": "Incomplete" if unresolved else "Resolved",
                 "staticCandidate": bool(binary and len(consumers) == 1 and not unresolved),
+                "allSlicesDynamic": all_slices_dynamic,
                 "duplicateGroup": component_duplicate_by_path.get(root) or None,
             }
         )
@@ -1625,11 +1686,65 @@ def _architecture_inventory(
         key=lambda item: (-int(item["repeatedSize"]), str(item.get("name", "")))
     )
 
+    target_by_executable: dict[str, dict[str, Any]] = {}
+    for target in targets:
+        executable = str(target.get("executable") or "")
+        if not executable:
+            continue
+        target_path = str(target.get("path") or "")
+        executable_path = f"{target_path}/{executable}" if target_path else executable
+        target_by_executable[executable_path] = target
+
+    linking_review_threshold = max(
+        MIN_LINKING_REVIEW_BYTES,
+        math.ceil(sum(record.size for record in records) * 0.005),
+    )
+    linking_reviews: list[dict[str, Any]] = []
+    for framework in frameworks:
+        consumers = list(framework.get("consumers") or [])
+        consumer = consumers[0] if len(consumers) == 1 else ""
+        target = target_by_executable.get(consumer)
+        if not (
+            framework.get("staticCandidate")
+            and framework.get("allSlicesDynamic")
+            and framework.get("consumerResolution") == "Resolved"
+            and target is not None
+            and not framework.get("duplicateGroup")
+            and int(framework.get("binarySize", 0)) >= linking_review_threshold
+        ):
+            continue
+        linking_reviews.append(
+            {
+                "id": f"static-or-mergeable:{framework['path']}",
+                "kind": "static-or-mergeable",
+                "name": framework["name"],
+                "path": framework["path"],
+                "frameworkSize": int(framework["size"]),
+                "binarySize": int(framework["binarySize"]),
+                "binaryCompressedSize": int(framework["binaryCompressedSize"]),
+                "resourceSize": int(framework["resourceSize"]),
+                "reviewScopeBytes": int(framework["binarySize"]),
+                "consumer": consumer,
+                "consumerName": str(target.get("name") or consumer),
+                "consumerKind": str(target.get("kind") or "Target"),
+                "action": "Test a static product or mergeable Release build, then compare archives.",
+            }
+        )
+    linking_reviews.sort(
+        key=lambda item: (-int(item["reviewScopeBytes"]), str(item["path"]).casefold())
+    )
+    linking_reviews = linking_reviews[:MAX_LINKING_REVIEWS]
+
     return {
         "targets": targets,
         "frameworks": frameworks,
+        "linkingReviews": linking_reviews,
+        "linkingReviewThresholdBytes": linking_review_threshold,
         "duplicateComponents": duplicates,
-        "crossTargetDuplicates": _cross_target_duplicate_inventory(records),
+        "crossTargetDuplicates": _cross_target_duplicate_inventory(
+            records,
+            component_duplicate_items,
+        ),
     }
 
 
@@ -2407,13 +2522,19 @@ class BundleAnalyzer:
             group for group in groups.values() if len(group) > 1
         ]
         items: list[dict[str, Any]] = []
-        savings = 0
-        paths: list[str] = []
+        insight_paths: list[str] = []
         group_index = 1
         for group in sorted(
             duplicate_groups,
-            key=lambda values: values[0].size * (len(values) - 1),
-            reverse=True,
+            key=lambda values: (
+                -(values[0].size * (len(values) - 1)),
+                tuple(
+                    sorted(
+                        (record.relative_path for record in values),
+                        key=lambda path: (path.casefold(), path),
+                    )
+                ),
+            ),
         ):
             group_savings = group[0].size * (len(group) - 1)
             if group_savings < 1024:
@@ -2423,9 +2544,30 @@ class BundleAnalyzer:
             for record in group:
                 record.duplicate_group = group_id
             _mark(group, "duplicates")
-            group_paths = [record.relative_path for record in group]
+            group_paths = sorted(
+                (record.relative_path for record in group),
+                key=lambda path: (path.casefold(), path),
+            )
+            insight_paths.extend(group_paths)
             group_names = {record.name for record in group}
             first_name = Path(sorted(group_paths, key=str.casefold)[0]).name
+            duplicate_type = (
+                "catalog"
+                if all(record.category == "asset_catalog" for record in group)
+                else "file"
+            )
+            for record in group:
+                record.metadata.update(
+                    {
+                        "duplicateType": duplicate_type,
+                        "duplicateGroup": group_id,
+                        "duplicateGroups": [group_id],
+                        "duplicateCount": 1,
+                        "scope": "same-runtime",
+                        "actionability": "candidate",
+                        "exactMatch": True,
+                    }
+                )
             items.append(
                 {
                     "group": group_id,
@@ -2438,11 +2580,14 @@ class BundleAnalyzer:
                     "savings": group_savings,
                     "pathCount": len(group_paths),
                     "paths": group_paths[:50],
+                    "pathsOmitted": max(0, len(group_paths) - 50),
                     "kind": "file",
+                    "duplicateType": duplicate_type,
+                    "scope": "same-runtime",
+                    "actionability": "candidate",
+                    "exactMatch": True,
                 }
             )
-            paths.extend(group_paths)
-            savings += group_savings
 
         rendition_groups: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
         for rendition in asset_renditions:
@@ -2463,10 +2608,25 @@ class BundleAnalyzer:
                     int(rendition["size"]),
                 )
                 rendition_groups.setdefault(key, []).append(rendition)
+
+        catalog_clusters: dict[
+            tuple[str, ...], list[dict[str, Any]]
+        ] = {}
+        standalone_asset_groups: list[dict[str, Any]] = []
+        asset_group_all_paths: dict[str, list[str]] = {}
+        catalog_asset_group_ids: dict[str, set[str]] = {}
+        catalog_evidence_group_ids: dict[str, set[str]] = {}
         for group in sorted(
             (values for values in rendition_groups.values() if len(values) > 1),
-            key=lambda values: int(values[0]["size"]) * (len(values) - 1),
-            reverse=True,
+            key=lambda values: (
+                -(int(values[0]["size"]) * (len(values) - 1)),
+                tuple(
+                    sorted(
+                        str(item.get("displayPath") or item.get("path") or "")
+                        for item in values
+                    )
+                ),
+            ),
         ):
             group_savings = int(group[0]["size"]) * (len(group) - 1)
             group_id = f"D{group_index}"
@@ -2477,34 +2637,177 @@ class BundleAnalyzer:
                     for item in group
                 }
             )
+            catalog_paths = sorted(
+                {
+                    str(item.get("path") or "").split("::", 1)[0]
+                    for item in group
+                    if str(item.get("path") or "").split("::", 1)[0]
+                },
+                key=lambda value: (value.casefold(), value),
+            )
             for rendition in group:
                 entry = rendition["entry"]
                 rendition["duplicateGroup"] = group_id
-                entry["duplicateGroup"] = group_id
-                if "duplicates" not in entry["insights"]:
+                rendition["duplicateType"] = "asset"
+                rendition["scope"] = "same-runtime"
+                rendition["actionability"] = "candidate"
+                if not entry.get("duplicateGroup"):
+                    entry["duplicateGroup"] = group_id
+                entry["duplicateType"] = "asset"
+                entry["scope"] = "same-runtime"
+                entry["actionability"] = "candidate"
+                if "duplicates" not in entry.setdefault("insights", []):
                     entry["insights"].append("duplicates")
+                entry_metadata = entry.setdefault("metadata", {})
+                entry_groups = entry_metadata.setdefault("duplicateGroups", [])
+                if group_id not in entry_groups:
+                    entry_groups.append(group_id)
+                entry_metadata["duplicateCount"] = len(entry_groups)
+                entry_metadata["duplicateType"] = "asset"
+                entry_metadata["scope"] = "same-runtime"
+                entry_metadata["actionability"] = "candidate"
                 catalog_path = str(rendition["path"]).split("::", 1)[0]
                 catalog = record_by_path.get(catalog_path)
                 if catalog:
                     _mark([catalog], "duplicates")
-                    catalog.metadata["duplicateCount"] = int(
-                        catalog.metadata.get("duplicateCount", 0)
-                    ) + 1
+                    catalog_asset_group_ids.setdefault(catalog_path, set()).add(
+                        group_id
+                    )
+            asset_group = {
+                "group": group_id,
+                "name": str(group[0]["name"]),
+                "size": int(group[0]["size"]),
+                "savings": group_savings,
+                "pathCount": len(group_paths),
+                "paths": group_paths[:50],
+                "pathsOmitted": max(0, len(group_paths) - 50),
+                "catalogCount": len(catalog_paths),
+                "catalogPaths": catalog_paths[:50],
+                "catalogPathsOmitted": max(0, len(catalog_paths) - 50),
+                "kind": "asset rendition",
+                "duplicateType": "asset",
+                "scope": "same-runtime",
+                "actionability": "candidate",
+            }
+            asset_group_all_paths[group_id] = group_paths
+            if len(catalog_paths) > 1:
+                catalog_clusters.setdefault(tuple(catalog_paths), []).append(
+                    asset_group
+                )
+            else:
+                standalone_asset_groups.append(asset_group)
+
+        for asset_group in standalone_asset_groups:
+            items.append(asset_group)
+            insight_paths.extend(
+                asset_group_all_paths.get(str(asset_group["group"]), [])
+            )
+            for catalog_path in asset_group.get("catalogPaths", []):
+                catalog_evidence_group_ids.setdefault(catalog_path, set()).add(
+                    str(asset_group["group"])
+                )
+
+        for catalog_paths, asset_groups in sorted(
+            catalog_clusters.items(),
+            key=lambda item: (
+                -sum(int(group.get("savings", 0)) for group in item[1]),
+                item[0],
+            ),
+        ):
+            # A single repeated asset remains useful asset-level evidence. Two
+            # or more groups with the same catalog path set are one catalog
+            # relationship, not a wall of unrelated duplicate-file rows.
+            if len(asset_groups) == 1:
+                asset_group = asset_groups[0]
+                items.append(asset_group)
+                insight_paths.extend(
+                    asset_group_all_paths.get(str(asset_group["group"]), [])
+                )
+                for catalog_path in catalog_paths:
+                    catalog_evidence_group_ids.setdefault(
+                        catalog_path, set()
+                    ).add(str(asset_group["group"]))
+                continue
+
+            catalog_group_id = f"D{group_index}"
+            group_index += 1
+            asset_groups.sort(
+                key=lambda item: (
+                    -int(item.get("savings", 0)),
+                    str(item.get("name", "")).casefold(),
+                    str(item.get("group", "")),
+                )
+            )
+            catalog_names = {Path(path).name for path in catalog_paths}
+            first_catalog_name = Path(catalog_paths[0]).name
+            catalog_savings = sum(
+                int(item.get("savings", 0)) for item in asset_groups
+            )
             items.append(
                 {
-                    "group": group_id,
-                    "name": str(group[0]["name"]),
-                    "size": int(group[0]["size"]),
-                    "savings": group_savings,
-                    "pathCount": len(group_paths),
-                    "paths": group_paths[:50],
-                    "kind": "asset rendition",
+                    "group": catalog_group_id,
+                    "name": (
+                        first_catalog_name
+                        if len(catalog_names) == 1
+                        else "Asset catalog overlap"
+                    ),
+                    "savings": catalog_savings,
+                    "pathCount": len(catalog_paths),
+                    "paths": list(catalog_paths[:50]),
+                    "pathsOmitted": max(0, len(catalog_paths) - 50),
+                    "catalogCount": len(catalog_paths),
+                    "catalogPaths": list(catalog_paths[:50]),
+                    "catalogPathsOmitted": max(0, len(catalog_paths) - 50),
+                    "repeatedAssetCount": len(asset_groups),
+                    "assetGroupCount": len(asset_groups),
+                    "assetGroups": asset_groups[:MAX_INSIGHT_ITEMS],
+                    "assetGroupsOmitted": max(
+                        0, len(asset_groups) - MAX_INSIGHT_ITEMS
+                    ),
+                    "kind": "asset catalog",
+                    "duplicateType": "catalog",
+                    "scope": "same-runtime",
+                    "actionability": "candidate",
+                    "exactMatch": False,
                 }
             )
-            paths.extend(group_paths)
-            savings += group_savings
+            insight_paths.extend(catalog_paths)
+            for catalog_path in catalog_paths:
+                catalog_evidence_group_ids.setdefault(catalog_path, set()).add(
+                    catalog_group_id
+                )
+
+        for catalog_path, asset_group_ids in catalog_asset_group_ids.items():
+            catalog = record_by_path.get(catalog_path)
+            if catalog is None:
+                continue
+            evidence_group_ids = sorted(
+                catalog_evidence_group_ids.get(catalog_path, asset_group_ids),
+                key=lambda value: (len(value), value),
+            )
+            catalog.metadata.update(
+                {
+                    "duplicateType": "catalog",
+                    "duplicateGroup": evidence_group_ids[0],
+                    "duplicateCatalogGroup": evidence_group_ids[0],
+                    "duplicateGroups": evidence_group_ids,
+                    "duplicateCount": len(evidence_group_ids),
+                    "repeatedAssetCount": len(asset_group_ids),
+                    "scope": "same-runtime",
+                    "actionability": "candidate",
+                    "exactMatch": False,
+                }
+            )
 
         if items:
+            items.sort(
+                key=lambda item: (
+                    -int(item.get("savings", 0)),
+                    str(item.get("name", "")).casefold(),
+                    str(item.get("group", "")),
+                )
+            )
+            savings = sum(int(item.get("savings", 0)) for item in items)
             insights.append(
                 _insight(
                     "duplicates",
@@ -2522,7 +2825,7 @@ class BundleAnalyzer:
                     severity="high",
                     confidence="review",
                     savings=savings,
-                    paths=paths,
+                    paths=insight_paths,
                     items=items,
                     category="duplicates",
                 )
@@ -3209,6 +3512,9 @@ class BundleAnalyzer:
                     rendition.get("optimizationMethod") or ""
                 ),
                 "duplicateGroup": str(rendition.get("duplicateGroup") or ""),
+                "duplicateType": str(rendition.get("duplicateType") or ""),
+                "scope": str(rendition.get("scope") or ""),
+                "actionability": str(rendition.get("actionability") or ""),
             }
             for key, value in optional.items():
                 if key in {"opaque", "physical"} and isinstance(value, bool):
@@ -4147,20 +4453,35 @@ class BundleAnalyzer:
             )
             category_sizes: dict[str, int] = {}
             insight_ids: set[str] = set(node.get("insights", []))
-            duplicates = 0
+            duplicate_groups: set[str] = set()
+            anonymous_duplicates = 0
             for child in children:
                 category = str(child.get("category", "other"))
                 category_sizes[category] = category_sizes.get(category, 0) + int(
                     child.get("size", 0)
                 )
                 insight_ids.update(child.get("insights", []))
+                child_metadata = child.get("metadata", {})
+                child_groups = {
+                    str(group)
+                    for group in child_metadata.get("duplicateGroups", [])
+                    if group
+                }
                 if child.get("duplicateGroup"):
-                    duplicates += 1
-                duplicates += int(child.get("metadata", {}).get("duplicateCount", 0))
+                    child_groups.add(str(child["duplicateGroup"]))
+                declared_count = int(child_metadata.get("duplicateCount", 0))
+                anonymous_duplicates += max(0, declared_count - len(child_groups))
+                duplicate_groups.update(child_groups)
             if category_sizes:
                 node["category"] = max(category_sizes, key=category_sizes.get)
             node["insights"] = sorted(insight_ids)
-            node["metadata"]["duplicateCount"] = duplicates
+            node["metadata"]["duplicateGroups"] = sorted(
+                duplicate_groups,
+                key=lambda value: (value[:1], len(value), value),
+            )
+            node["metadata"]["duplicateCount"] = (
+                len(duplicate_groups) + anonymous_duplicates
+            )
             node["metadata"]["fileCount"] = sum(
                 1
                 if child.get("kind") == "file"
