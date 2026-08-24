@@ -221,7 +221,7 @@ class AnalyzerTests(unittest.TestCase):
         self.assertTrue(all(record.duplicate_group is None for record in records))
         self.assertEqual(
             inventory["items"][0]["name"],
-            "shared.js +2 exact matches",
+            "shared.js +2 more",
         )
 
     def test_duplicate_path_totals_include_item_paths_beyond_display_cap(self) -> None:
@@ -354,7 +354,7 @@ class AnalyzerTests(unittest.TestCase):
 
         self.assertEqual(
             insights[0]["items"][0]["name"],
-            "EmptyAudio.png +1 exact matches",
+            "EmptyAudio.png +1 more",
         )
         self.assertEqual(insights[0]["items"][0]["duplicateType"], "file")
         self.assertEqual(insights[0]["items"][0]["scope"], "same-runtime")
@@ -1410,14 +1410,13 @@ class AnalyzerTests(unittest.TestCase):
             self.assertNotIn('id="map-key"', html)
             self.assertNotIn("map-recommendation-mark", html)
             self.assertIn('id="duplicate-map-key"', html)
-            self.assertIn("exact-duplicate", html)
-            self.assertIn("repeated-assets", html)
-            self.assertIn("contains-duplicates", html)
             self.assertIn("duplication", html)
-            self.assertIn("exact-match group", html)
+            self.assertIn("finding", html)
             self.assertIn("duplicate-type-badge", html)
-            self.assertIn("duplicate-group-badge", html)
-            self.assertIn("exact match", html)
+            self.assertNotIn("duplicate-group-badge", html)
+            self.assertNotIn("exact-duplicate", html)
+            self.assertNotIn("repeated-assets", html)
+            self.assertNotIn("contains-duplicates", html)
             self.assertIn("review every runtime", html)
             self.assertIn("repeated footprint", html)
             self.assertIn("worth testing", html)

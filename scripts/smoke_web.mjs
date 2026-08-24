@@ -213,12 +213,6 @@ try {
             || Number(node?.metadata?.duplicateCount || 0) > 0
             || (node?.children || []).some(treeHasDuplicateEvidence)
           );
-          const isRepeatedAssetCatalog = (node) => String(node?.duplicateType || node?.metadata?.duplicateType || "").toLowerCase() === "catalog"
-            && (node?.exactMatch === false || node?.metadata?.exactMatch === false || Boolean(node?.duplicateCatalogGroup || node?.metadata?.duplicateCatalogGroup));
-          const treeHasRepeatedAssetEvidence = (node) => Boolean(
-            (duplicateGroup(node) && isRepeatedAssetCatalog(node))
-            || (node?.children || []).some(treeHasRepeatedAssetEvidence)
-          );
           const duplicateInsight = qualifyingRecommendations.find((item) => item.id === "duplicates");
           const duplicateRecommendation = recommendations.find((element) => element.dataset.insightId === "duplicates");
           const duplicateEvidenceRows = [...(duplicateRecommendation?.querySelectorAll(".recommendation-evidence") || [])];
@@ -235,7 +229,6 @@ try {
                 && Boolean(row.querySelector(".duplicate-type-badge"))
                 && Boolean(row.querySelector(".duplicate-actionability"))
                 && (!sourceGroup || row.dataset.duplicateGroup === sourceGroup)
-                && (!sourceGroup || Boolean(row.querySelector(".duplicate-group-badge")))
                 && catalogHasDetails;
             }));
           const recommendationsNav = document.querySelector('[data-view="insights"]');
@@ -249,12 +242,8 @@ try {
           const binaryItems = reportData.binaries?.items || [];
           const binaryRows = [...document.querySelectorAll("#binaries-stack .binary-item")];
           const treeContainsDuplicates = treeHasDuplicateEvidence(reportData.tree);
-          const treeContainsRepeatedAssets = treeHasRepeatedAssetEvidence(reportData.tree);
           const duplicateKey = document.querySelector("#duplicate-map-key");
-          const repeatedAssetKey = document.querySelector("#duplicate-key-repeated");
-          const renderedExactDuplicateNodes = [...document.querySelectorAll("#bundle-map .treemap-block.exact-duplicate[data-duplicate-group], #bundle-map .treemap-group-label.exact-duplicate[data-duplicate-group]")];
-          const renderedRepeatedAssetNodes = [...document.querySelectorAll("#bundle-map .treemap-block.repeated-assets[data-duplicate-group], #bundle-map .treemap-group-label.repeated-assets[data-duplicate-group]")];
-          const renderedDuplicateContainers = [...document.querySelectorAll("#bundle-map .treemap-block.contains-duplicates, #bundle-map .treemap-group-label.contains-duplicates")];
+          const renderedDuplicationNodes = [...document.querySelectorAll("#bundle-map .treemap-block.duplication[data-duplicate-group], #bundle-map .treemap-group-label.duplication[data-duplicate-group]")];
           document.querySelector('#image-sources [data-source="all-images"]')?.click();
           for (let page = 0; page < 50 && document.querySelector("#show-more-images"); page += 1) document.querySelector("#show-more-images").click();
           const imageDuplicateRows = [...document.querySelectorAll("#image-list [data-duplicate-count]")];
@@ -296,12 +285,11 @@ try {
             treemapLayers: document.querySelectorAll("#bundle-map .treemap-layer").length,
             hasStaleMapRecommendationUI: Boolean(document.querySelector("#map-key, .map-recommendation-mark, #bundle-map .has-recommendation")),
             duplicateKeyMatchesData: Boolean(duplicateKey) && duplicateKey.hidden === !treeContainsDuplicates,
-            repeatedAssetKeyMatchesData: Boolean(repeatedAssetKey) && repeatedAssetKey.hidden === !treeContainsRepeatedAssets,
-            exactDuplicateNodesAccessible: renderedExactDuplicateNodes.every((element) => /exact duplicate/i.test(element.getAttribute("aria-label") || "")),
-            repeatedAssetNodesAccessible: renderedRepeatedAssetNodes.every((element) => /repeated assets/i.test(element.getAttribute("aria-label") || "") && !/exact duplicate/i.test(element.getAttribute("aria-label") || "")),
-            duplicateContainersAccessible: renderedDuplicateContainers.every((element) => /contains (?:.*duplicate|repeated assets)/i.test(element.getAttribute("aria-label") || "")),
-            imageDuplicateSummariesValid: imageDuplicateRows.every((element) => Boolean(element.querySelector(".image-exact-match")) && /exact match/i.test(element.querySelector(".image-row")?.getAttribute("aria-label") || element.getAttribute("aria-label") || "")),
-            architectureDuplicateSemantics: architectureDuplicateRows.every((element) => allowedDuplicateTypes.has(element.dataset.duplicateType) && ["review-every-runtime","review-target-membership"].includes(element.dataset.duplicateActionability) && Boolean(element.querySelector(".duplicate-type-badge")) && Boolean(element.querySelector(".duplicate-actionability")) && /review/i.test(element.querySelector(":scope > summary")?.getAttribute("aria-label") || "")),
+            duplicateKeyIsUnified: duplicateKey?.querySelectorAll(".duplicate-key-row").length === 1 && duplicateKey?.textContent.trim() === "Duplication",
+            duplicationNodesAccessible: renderedDuplicationNodes.every((element) => /duplication/i.test(element.getAttribute("aria-label") || "")),
+            duplicateTaxonomyRemoved: !document.querySelector("#duplicate-key-repeated, .exact-duplicate, .repeated-assets, .contains-duplicates, .duplicate-group-badge"),
+            imageDuplicateSummariesValid: imageDuplicateRows.every((element) => Boolean(element.querySelector(".image-exact-match")) && /duplication/i.test(element.querySelector(".image-row")?.getAttribute("aria-label") || element.getAttribute("aria-label") || "")),
+            architectureDuplicateSemantics: architectureDuplicateRows.every((element) => allowedDuplicateTypes.has(element.dataset.duplicateType) && ["review-every-runtime","review-target-membership"].includes(element.dataset.duplicateActionability) && Boolean(element.querySelector(".duplicate-type-badge")) && Boolean(element.querySelector(".duplicate-actionability")) && /duplication/i.test(element.querySelector(":scope > summary")?.getAttribute("aria-label") || "")),
             architectureDuplicateCopyClear: !architectureDuplicateRows.length || [...document.querySelectorAll("#architecture-stack .architecture-header")].some((element) => /repeated footprint/i.test(element.textContent || "")),
             bundleTreemapNavLabel: document.querySelector('[data-view="map"] > span:last-child')?.textContent.trim(),
             bundleTreemapHeader: document.querySelector("#view-map .view-head h2")?.textContent.trim(),
@@ -360,10 +348,9 @@ try {
     reportUI?.treemapLayers !== 1 ||
     reportUI?.hasStaleMapRecommendationUI ||
     !reportUI?.duplicateKeyMatchesData ||
-    !reportUI?.repeatedAssetKeyMatchesData ||
-    !reportUI?.exactDuplicateNodesAccessible ||
-    !reportUI?.repeatedAssetNodesAccessible ||
-    !reportUI?.duplicateContainersAccessible ||
+    !reportUI?.duplicateKeyIsUnified ||
+    !reportUI?.duplicationNodesAccessible ||
+    !reportUI?.duplicateTaxonomyRemoved ||
     !reportUI?.imageDuplicateSummariesValid ||
     !reportUI?.architectureDuplicateSemantics ||
     !reportUI?.architectureDuplicateCopyClear ||

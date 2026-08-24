@@ -1432,7 +1432,7 @@ def _cross_target_duplicate_inventory(
                     "name": (
                         first_name
                         if len(names) == 1
-                        else f"{first_name} +{len(paths) - 1} exact matches"
+                        else f"{first_name} +{len(paths) - 1} more"
                     ),
                     "kind": group[0].category,
                     "duplicateType": (
@@ -2574,7 +2574,7 @@ class BundleAnalyzer:
                     "name": (
                         first_name
                         if len(group_names) == 1
-                        else f"{first_name} +{len(group_paths) - 1} exact matches"
+                        else f"{first_name} +{len(group_paths) - 1} more"
                     ),
                     "size": group[0].size,
                     "savings": group_savings,
@@ -2811,10 +2811,10 @@ class BundleAnalyzer:
             insights.append(
                 _insight(
                     "duplicates",
-                    f"Remove {len(items)} duplicate group{'s' if len(items) != 1 else ''}",
-                    f"Keeping one copy from each group could save about {savings:,} bytes.",
+                    "Duplication",
+                    f"{len(items)} finding{'s' if len(items) != 1 else ''} within individual targets.",
                     detail=(
-                        "Exact matches are scoped to one executable target. Loose files "
+                        "Matches are scoped to one executable target. Loose files "
                         "use SHA-256 and size; catalog renditions also bind dimensions, "
                         "scale, and serialized CoreUI size."
                     ),
