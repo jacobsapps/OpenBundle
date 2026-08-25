@@ -594,11 +594,74 @@ try {
     });
     await delay(240);
   }
+  if (process.env.EXPECT_NESTED_BREADCRUMB === "1") {
+    const openedNestedGroup = (
+      await command("Runtime.evaluate", {
+        expression: `(() => {
+          const label = document.querySelector('button[data-node-path="Resources/Review.bundle"]');
+          label?.click();
+          return Boolean(label);
+        })()`,
+        returnByValue: true,
+      })
+    ).result.value;
+    if (!openedNestedGroup) {
+      throw new Error("Nested treemap fixture was not rendered.");
+    }
+    await delay(240);
+    const crumbs = JSON.parse(
+      (
+        await command("Runtime.evaluate", {
+          expression: `JSON.stringify([...document.querySelectorAll("#crumbs > *")]
+            .filter(element => !element.classList.contains("crumb-sep"))
+            .map(element => element.textContent.trim()))`,
+          returnByValue: true,
+        })
+      ).result.value,
+    );
+    if (
+      JSON.stringify(crumbs) !==
+      JSON.stringify([analysis.tree.name, "Resources", "Review.bundle"])
+    ) {
+      throw new Error(`Nested treemap breadcrumb lost ancestors: ${JSON.stringify(crumbs)}.`);
+    }
+    await command("Runtime.evaluate", {
+      expression: `document.querySelector("#crumbs button")?.click()`,
+    });
+    await delay(240);
+  }
   const screenshotView = process.env.SCREENSHOT_VIEW || "";
   if (["map", "insights", "images", "architecture", "binaries", "capabilities", "locales"].includes(screenshotView)) {
     await command("Runtime.evaluate", {
       expression: `document.querySelector('[data-view="${screenshotView}"]')?.click()`,
     });
+    await delay(250);
+  }
+  if (process.env.OPEN_TREEMAP_PATH) {
+    const openedPath = JSON.parse(
+      (
+        await command("Runtime.evaluate", {
+          expression: `(() => {
+            const wanted = ${JSON.stringify(process.env.OPEN_TREEMAP_PATH)};
+            const match = [...document.querySelectorAll("#bundle-map button[data-node-path]")]
+              .find(element => element.dataset.nodePath === wanted);
+            match?.click();
+            return JSON.stringify({
+              opened:Boolean(match),
+              path:wanted,
+              duplicateGroup:match?.dataset.duplicateGroup || "",
+            });
+          })()`,
+          returnByValue: true,
+        })
+      ).result.value,
+    );
+    if (!openedPath.opened) {
+      throw new Error(`Requested treemap path was not rendered: ${openedPath.path}.`);
+    }
+    if (process.env.EXPECT_OPEN_TREEMAP_DUPLICATION === "1" && !openedPath.duplicateGroup) {
+      throw new Error(`Requested treemap path was not marked as duplication: ${openedPath.path}.`);
+    }
     await delay(250);
   }
   if (process.env.OPEN_RECOMMENDATION_ID || process.env.OPEN_FIRST_RECOMMENDATION === "1") {

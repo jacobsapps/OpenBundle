@@ -294,6 +294,127 @@ class AnalyzerTests(unittest.TestCase):
             "shared.js +2 more",
         )
 
+    def test_cross_target_catalog_overlap_is_review_evidence_and_marks_tree(
+        self,
+    ) -> None:
+        catalog_paths = (
+            "Assets.car",
+            "Phone.bundle/Assets.car",
+            "PlugIns/Widget.appex/Assets.car",
+        )
+        records = [
+            Record(
+                relative_path=path,
+                absolute_path=Path("/temporary/Test.app") / path,
+                size=500_000 + index,
+                compressed_size=400_000,
+                allocated_size=503_808,
+                category="asset_catalog",
+                sha256=str(index + 1) * 64,
+            )
+            for index, path in enumerate(catalog_paths)
+        ]
+        renditions: list[dict] = []
+        entries_by_catalog: dict[str, list[dict]] = {
+            path: [] for path in catalog_paths
+        }
+        for asset_index, size in enumerate((120_000, 80_000)):
+            for catalog_path in catalog_paths:
+                entry_path = f"{catalog_path}::SharedAsset{asset_index}"
+                entry = {
+                    "name": f"SharedAsset{asset_index}",
+                    "path": entry_path,
+                    "kind": "asset",
+                    "category": "asset_catalog",
+                    "size": size,
+                    "compressedSize": size,
+                    "allocatedSize": size,
+                    "children": [],
+                    "metadata": {"assetType": "image", "renditionCount": 1},
+                    "insights": [],
+                }
+                entries_by_catalog[catalog_path].append(entry)
+                renditions.append(
+                    {
+                        "entry": entry,
+                        "name": entry["name"],
+                        "path": entry_path,
+                        "displayPath": f"{entry_path}/3x.png",
+                        "size": size,
+                        "digest": f"{asset_index + 1:064x}",
+                    }
+                )
+        for record in records:
+            record.virtual_children = entries_by_catalog[record.relative_path]
+
+        insights: list[dict] = []
+        analyzer = BundleAnalyzer()
+        analyzer._duplicate_insight(records, renditions, insights)
+
+        # The app and resource bundle share one runtime, so their copies remain
+        # actionable recommendation savings. The extension copy does not.
+        self.assertEqual(insights[0]["savings"], 200_000)
+        same_runtime_group = records[0].metadata["duplicateGroup"]
+        self.assertEqual(
+            records[1].metadata["duplicateGroup"], same_runtime_group
+        )
+        self.assertNotIn("duplicateGroup", records[2].metadata)
+
+        inventory = _cross_target_duplicate_inventory(
+            records,
+            asset_renditions=renditions,
+        )
+
+        self.assertEqual(inventory["count"], 1)
+        self.assertEqual(inventory["totalRepeatedSize"], 200_000)
+        catalog = inventory["items"][0]
+        self.assertEqual(catalog["duplicateType"], "catalog")
+        self.assertEqual(catalog["scope"], "cross-target")
+        self.assertEqual(catalog["actionability"], "review")
+        self.assertEqual(catalog["targetCount"], 2)
+        self.assertEqual(catalog["catalogCount"], 3)
+        self.assertEqual(catalog["repeatedAssetCount"], 2)
+        self.assertEqual(catalog["repeatedRenditionCount"], 2)
+        self.assertEqual(catalog["repeatedAssetNameCount"], 2)
+        self.assertEqual(catalog["repeatedSize"], 200_000)
+
+        # Cross-target evidence augments, rather than overwrites, the safer
+        # same-runtime recommendation grouping.
+        self.assertEqual(records[0].metadata["duplicateGroup"], same_runtime_group)
+        self.assertIn(
+            catalog["group"],
+            records[0].metadata["crossTargetDuplicateGroups"],
+        )
+        widget = records[2]
+        self.assertEqual(widget.metadata["duplicateGroup"], catalog["group"])
+        self.assertEqual(widget.metadata["scope"], "cross-target")
+        self.assertEqual(widget.metadata["crossTargetRepeatedAssetCount"], 2)
+        self.assertTrue(
+            all(
+                entry["duplicateGroup"].startswith("XA")
+                and entry["scope"] == "cross-target"
+                for entry in entries_by_catalog[catalog_paths[2]]
+            )
+        )
+
+        tree = analyzer._build_tree("Test.app", records, {})
+        widget_catalog = next(
+            child
+            for plugins in tree["children"]
+            if plugins["name"] == "PlugIns"
+            for extension in plugins["children"]
+            if extension["name"] == "Widget.appex"
+            for child in extension["children"]
+            if child["name"] == "Assets.car"
+        )
+        self.assertEqual(
+            widget_catalog["metadata"]["duplicateCatalogGroup"],
+            catalog["group"],
+        )
+        self.assertTrue(
+            all(child["duplicateGroup"] for child in widget_catalog["children"])
+        )
+
     def test_duplicate_path_totals_include_item_paths_beyond_display_cap(self) -> None:
         records = [
             Record(

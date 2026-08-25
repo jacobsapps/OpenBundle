@@ -12,7 +12,7 @@ there is no supported CLI or macOS executable.
 
 | Check | Browser implementation |
 | --- | --- |
-| Remove duplicate files | SHA-256 and exact byte size within one runtime bundle; cross-target repeats are kept as Architecture evidence rather than claimed savings |
+| Remove duplicate files | SHA-256 and exact byte size for files, plus decoded rendition identity for asset catalogs; same-runtime copies are recommendations, cross-target file repeats stay Architecture evidence, and cross-target catalog overlap is also marked in the treemap |
 | Enable image thinning | Groups loose `@1x`/`@2x`/`@3x` sets by path and estimates the per-device unpacked bytes asset-catalog thinning can avoid |
 | Optimize images | Measures quality-85 conversions for loose images and supported catalog renditions; requires at least 4 KB of measured saving |
 | Strip binary symbols | Parses 32- and 64-bit Mach-O symbol and string tables and models `strip -rSTx` without invoking Apple tools |

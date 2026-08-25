@@ -236,6 +236,12 @@ function normalizeReportCollections(input) {
   }
   for (const duplicate of input.architecture.crossTargetDuplicates.items) {
     arrayField(duplicate, "paths");
+    arrayField(duplicate, "catalogPaths");
+    duplicate.assetGroups = objectArray(duplicate.assetGroups);
+    for (const group of duplicate.assetGroups) {
+      arrayField(group, "paths");
+      arrayField(group, "catalogPaths");
+    }
   }
 
   input.binaries = plainObject(input.binaries);

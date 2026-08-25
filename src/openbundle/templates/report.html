@@ -2201,7 +2201,17 @@
       document.getElementById("back-button").hidden = treeState.focusStack.length === 1;
     }
     function openGroup(node,entry) {
-      treeState.focusStack.push(node);
+      const findNodeChain = (root,target,chain=[]) => {
+        const next = [...chain,root];
+        if (root === target) return next;
+        for (const child of root.children || []) {
+          const match = findNodeChain(child,target,next);
+          if (match) return match;
+        }
+        return null;
+      };
+      const chain = findNodeChain(focusNode(),node);
+      treeState.focusStack.push(...(chain ? chain.slice(1) : [node]));
       renderMap({direction:"in",sourceRect:entry,userNavigation:true});
     }
     const map = document.getElementById("bundle-map");
@@ -2452,8 +2462,8 @@
       if (item.id === "duplicates") {
         const type = duplicateType(row);
         const count = Math.max(paths.length,Number(row.copies || 0),Number(row.pathCount || 0),Number(row.catalogCount || 0));
-        const repeatedAssets = Math.max(0,Number(row.repeatedAssetCount || 0),Array.isArray(row.assetGroups) ? row.assetGroups.length : 0);
-        if (type === "catalog") return `${count.toLocaleString()} catalog${count === 1 ? "" : "s"}${repeatedAssets ? ` · ${repeatedAssets.toLocaleString()} matching asset${repeatedAssets === 1 ? "" : "s"}` : ""}`;
+        const repeatedRenditions = Math.max(0,Number(row.repeatedRenditionCount || row.repeatedAssetCount || 0),Array.isArray(row.assetGroups) ? row.assetGroups.length : 0);
+        if (type === "catalog") return `${count.toLocaleString()} catalog${count === 1 ? "" : "s"}${repeatedRenditions ? ` · ${repeatedRenditions.toLocaleString()} matching rendition${repeatedRenditions === 1 ? "" : "s"}` : ""}`;
         return `${count.toLocaleString()} matching cop${count === 1 ? "y" : "ies"}`;
       }
       if (item.id === "asset-catalog-scales") return parentPath(row.path);
@@ -2480,15 +2490,17 @@
         <div class="evidence-path"><code>${esc(value.path)}</code>${value.value ? `<span>${esc(value.value)}</span>` : ""}</div>`).join("")}${omitted ? `<div class="evidence-path"><code>${omitted.toLocaleString()} paths omitted</code></div>` : ""}</div>`;
       if (item.id !== "duplicates" || duplicateType(row) !== "catalog") return pathBody;
       const rawGroups = Array.isArray(row.assetGroups) ? row.assetGroups : [];
-      const repeatedAssets = Math.max(0,Number(row.repeatedAssetCount || 0),rawGroups.length);
-      if (!repeatedAssets && !rawGroups.length) return pathBody;
-      const groupLabels = rawGroups.slice(0,8).map((group,index) => {
+      const repeatedRenditions = Math.max(0,Number(row.repeatedRenditionCount || row.repeatedAssetCount || 0),rawGroups.length);
+      if (!repeatedRenditions && !rawGroups.length) return pathBody;
+      const allGroupLabels = rawGroups.map((group,index) => {
         if (group && typeof group === "object") {
           return String(group.name || group.assetName || `Asset ${index + 1}`);
         }
         return String(group || `Asset ${index + 1}`);
       });
-      return `${pathBody}<div class="duplicate-catalog-summary"><strong>${repeatedAssets.toLocaleString()} matching asset${repeatedAssets === 1 ? "" : "s"}</strong>${groupLabels.length ? `<div class="duplicate-asset-groups">${groupLabels.map(label => `<span class="duplicate-asset-group" title="${esc(label)}">${esc(label)}</span>`).join("")}${rawGroups.length > groupLabels.length ? `<span class="duplicate-asset-group">+${(rawGroups.length - groupLabels.length).toLocaleString()} more</span>` : ""}</div>` : ""}</div>`;
+      const groupLabels = [...new Set(allGroupLabels)].slice(0,8);
+      const labelsOmitted = Math.max(0,new Set(allGroupLabels).size - groupLabels.length);
+      return `${pathBody}<div class="duplicate-catalog-summary"><strong>${repeatedRenditions.toLocaleString()} matching rendition${repeatedRenditions === 1 ? "" : "s"}</strong>${groupLabels.length ? `<div class="duplicate-asset-groups">${groupLabels.map(label => `<span class="duplicate-asset-group" title="${esc(label)}">${esc(label)}</span>`).join("")}${labelsOmitted ? `<span class="duplicate-asset-group">+${labelsOmitted.toLocaleString()} more names</span>` : ""}</div>` : ""}</div>`;
     }
     function recommendationEvidenceRow(item,row,index) {
       const variants = cleanObjectArray(row.variants);
@@ -2648,18 +2660,28 @@
       const type = mode === "component" && !item.duplicateType ? "component" : duplicateType(item);
       const typedItem = {...item,duplicateType:type};
       const group = duplicateGroup(item);
-      const actionability = mode === "cross-target" ? "review-every-runtime" : "review-target-membership";
-      const actionLabel = mode === "cross-target" ? "Review every runtime" : "Review target membership";
+      const catalogReview = mode === "cross-target" && type === "catalog";
+      const actionability = mode === "cross-target" && !catalogReview ? "review-every-runtime" : "review-target-membership";
+      const actionLabel = mode === "cross-target" && !catalogReview ? "Review every runtime" : "Review target membership";
       const name = String(item.name || fileName(paths[0]) || "Duplication");
-      const aria = `${name}, ${DUPLICATE_TYPE_LABELS[type]}, duplication, ${actionLabel.toLowerCase()}, ${fmt(item.size)} each`;
+      const assetGroups = cleanObjectArray(item.assetGroups);
+      const repeatedRenditions = Math.max(0,Number(item.repeatedRenditionCount || item.repeatedAssetCount || 0),assetGroups.length);
+      const footprintLabel = type === "catalog" && repeatedRenditions
+        ? `${repeatedRenditions.toLocaleString()} matching rendition${repeatedRenditions === 1 ? "" : "s"}`
+        : `${fmt(item.size)} each`;
+      const allAssetLabels = assetGroups.map((asset,index) => String(asset.name || `Asset ${index + 1}`));
+      const assetLabels = [...new Set(allAssetLabels)].slice(0,8);
+      const assetLabelsOmitted = Math.max(0,new Set(allAssetLabels).size - assetLabels.length);
+      const assetSummary = type === "catalog" && repeatedRenditions ? `<div class="duplicate-catalog-summary"><strong>${esc(footprintLabel)}</strong>${assetLabels.length ? `<div class="duplicate-asset-groups">${assetLabels.map(label => `<span class="duplicate-asset-group" title="${esc(label)}">${esc(label)}</span>`).join("")}${assetLabelsOmitted ? `<span class="duplicate-asset-group">+${assetLabelsOmitted.toLocaleString()} more names</span>` : ""}</div>` : ""}</div>` : "";
+      const aria = `${name}, ${DUPLICATE_TYPE_LABELS[type]}, duplication, ${actionLabel.toLowerCase()}, ${footprintLabel}`;
       return `<details class="architecture-duplicate-item" data-duplicate-type="${esc(type)}" data-duplicate-actionability="${actionability}"${group ? ` data-duplicate-group="${esc(group)}"` : ""}${index >= ARCHITECTURE_EVIDENCE_LIMIT ? " hidden" : ""}>
         <summary class="architecture-row architecture-duplicate-row" aria-label="${esc(aria)}">
-          <div class="architecture-primary"><div class="architecture-duplicate-badges">${duplicateTypeBadge(typedItem)}<span class="duplicate-actionability">${actionLabel}</span></div><strong title="${esc(name)}"><span class="architecture-disclosure" aria-hidden="true">›</span>${esc(name)}</strong><span>${fmt(item.size)} each</span></div>
+          <div class="architecture-primary"><div class="architecture-duplicate-badges">${duplicateTypeBadge(typedItem)}<span class="duplicate-actionability">${actionLabel}</span></div><strong title="${esc(name)}"><span class="architecture-disclosure" aria-hidden="true">›</span>${esc(name)}</strong><span>${esc(footprintLabel)}</span></div>
           <div class="architecture-cell">${Number(count || 0).toLocaleString()}</div>
           <div class="architecture-paths">${paths.slice(0,2).map(path => `<span title="${esc(path)}">${esc(path)}</span>`).join("")}${summaryRemainder ? `<span>+${summaryRemainder.toLocaleString()}</span>` : ""}</div>
           <div class="architecture-size">${fmt(item.repeatedSize)}</div>
         </summary>
-        <div class="architecture-location-list">${paths.map(path => `<code>${esc(path)}</code>`).join("")}${pathsOmitted ? `<span>${pathsOmitted.toLocaleString()} paths omitted</span>` : ""}</div>
+        <div class="architecture-location-list">${paths.map(path => `<code>${esc(path)}</code>`).join("")}${pathsOmitted ? `<span>${pathsOmitted.toLocaleString()} paths omitted</span>` : ""}${assetSummary}</div>
       </details>`;
     }
     function architectureMore(items,omitted=0) {
@@ -2712,7 +2734,7 @@
         <section class="architecture-section">
           <header class="architecture-section-head"><div><h3>Across targets</h3><p class="architecture-section-note">Duplication may be required by independently loaded targets.</p></div><span>${architectureCrossTargetDuplicateTotal.toLocaleString()}</span></header>
           <div class="architecture-table">
-            <div class="architecture-row architecture-header architecture-duplicate-row"><span>File</span><span>Targets</span><span>Locations</span><span>Repeated footprint</span></div>
+            <div class="architecture-row architecture-header architecture-duplicate-row"><span>Resource</span><span>Targets</span><span>Locations</span><span>Repeated footprint</span></div>
             ${architectureCrossTargetDuplicates.map((item,index) => architectureDuplicateRow(item,item.targetCount,index,"cross-target")).join("")}
             ${architectureMore(architectureCrossTargetDuplicates,architectureCrossTargetDuplicatesOmitted)}
           </div>

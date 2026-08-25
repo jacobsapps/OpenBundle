@@ -482,7 +482,13 @@ test("normalizes malformed nested renderer collections", () => {
     frameworks: [{ consumers: "App" }],
     linkingReviews: "Framework",
     duplicateComponents: [{ paths: "A.framework" }],
-    crossTargetDuplicates: { items: [{ paths: "shared.js" }] },
+    crossTargetDuplicates: {
+      items: [{
+        paths: "shared.js",
+        catalogPaths: "Assets.car",
+        assetGroups: [{ paths: "asset.png", catalogPaths: "Assets.car" }],
+      }],
+    },
   };
   value.binaries = {
     items: [{ architectures: [{ dependencies: "A", segments: [{ sections: "B" }] }] }],
@@ -502,6 +508,9 @@ test("normalizes malformed nested renderer collections", () => {
   assert.deepEqual(normalized.architecture.frameworks[0].consumers, []);
   assert.deepEqual(normalized.architecture.linkingReviews, []);
   assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].paths, []);
+  assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].catalogPaths, []);
+  assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].assetGroups[0].paths, []);
+  assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].assetGroups[0].catalogPaths, []);
   assert.deepEqual(normalized.binaries.items[0].architectures[0].segments[0].sections, []);
   assert.deepEqual(normalized.locales.rows, []);
 });

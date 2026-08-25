@@ -171,6 +171,11 @@ def build(output: Path) -> None:
         repeated = _deterministic_bytes(180_000)
         (resources / "first.data").write_bytes(repeated)
         (resources / "second.data").write_bytes(repeated)
+        review_bundle = resources / "Review.bundle"
+        review_bundle.mkdir()
+        (review_bundle / "nested.data").write_bytes(
+            _deterministic_bytes(220_000)
+        )
         (resources / "preview.png").write_bytes(_png())
 
         with zipfile.ZipFile(

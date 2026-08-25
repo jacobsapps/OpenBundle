@@ -1722,11 +1722,241 @@ def _component_duplicate_groups(
     return group_map, items
 
 
+def _cross_target_asset_catalog_items(
+    records: list[Record],
+    asset_renditions: Iterable[dict[str, Any]],
+    exact_catalog_sets: Iterable[frozenset[str]] = (),
+) -> list[dict[str, Any]]:
+    """Find exact rendition overlap across independently loaded targets.
+
+    Same-runtime catalog overlap is an actionable recommendation and is handled
+    by :meth:`BundleAnalyzer._duplicate_insight`.  An extension cannot be
+    assumed to load the containing app's resources, but identical compiled
+    renditions still represent shipped duplication and useful target-membership
+    evidence.  Keep that separate from claimed recommendation savings while
+    annotating the catalogs and assets so the treemap remains honest.
+    """
+
+    record_by_path = {record.relative_path: record for record in records}
+    covered_catalog_sets = [set(paths) for paths in exact_catalog_sets if paths]
+    grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    for rendition in asset_renditions:
+        rendition_path = str(
+            rendition.get("displayPath") or rendition.get("path") or ""
+        ).lower()
+        digest = rendition.get("digest")
+        size = int(rendition.get("size", 0) or 0)
+        if "appicon" in rendition_path or not digest or size < 1024:
+            continue
+        grouped.setdefault((str(digest), size), []).append(rendition)
+
+    asset_groups: list[dict[str, Any]] = []
+    for values in sorted(
+        grouped.values(),
+        key=lambda group: (
+            -(int(group[0].get("size", 0) or 0)),
+            tuple(
+                sorted(
+                    str(item.get("displayPath") or item.get("path") or "")
+                    for item in group
+                )
+            ),
+        ),
+    ):
+        catalog_paths = sorted(
+            {
+                str(item.get("path") or "").split("::", 1)[0]
+                for item in values
+                if str(item.get("path") or "").split("::", 1)[0]
+            },
+            key=lambda value: (value.casefold(), value),
+        )
+        scopes = {_embedded_bundle_scope(path) for path in catalog_paths}
+        if len(catalog_paths) < 2 or len(scopes) < 2:
+            continue
+        if any(set(catalog_paths).issubset(paths) for paths in covered_catalog_sets):
+            # An exact cross-target Assets.car match is already clearer and
+            # cheaper to represent as one whole-file row.
+            continue
+
+        group_id = f"XA{len(asset_groups) + 1}"
+        size = int(values[0].get("size", 0) or 0)
+        display_paths = sorted(
+            {
+                str(item.get("displayPath") or item.get("path") or "")
+                for item in values
+                if str(item.get("displayPath") or item.get("path") or "")
+            },
+            key=lambda value: (value.casefold(), value),
+        )
+        repeated_size = size * (len(scopes) - 1)
+        asset_group = {
+            "group": group_id,
+            "name": str(values[0].get("name") or "Asset rendition"),
+            "kind": "asset catalog rendition",
+            "duplicateType": "asset",
+            "scope": "cross-target",
+            "actionability": "review",
+            "size": size,
+            "repeatedSize": repeated_size,
+            "targetCount": len(scopes),
+            "pathCount": len(display_paths),
+            "paths": display_paths[:50],
+            "pathsOmitted": max(0, len(display_paths) - 50),
+            "catalogCount": len(catalog_paths),
+            "catalogPaths": catalog_paths[:50],
+            "catalogPathsOmitted": max(0, len(catalog_paths) - 50),
+        }
+        asset_groups.append(asset_group)
+        for rendition in values:
+            rendition_groups = rendition.setdefault("duplicateGroups", [])
+            if group_id not in rendition_groups:
+                rendition_groups.append(group_id)
+            rendition["crossTargetDuplicateGroup"] = group_id
+            if not rendition.get("duplicateGroup"):
+                rendition["duplicateGroup"] = group_id
+                rendition["duplicateType"] = "asset"
+                rendition["scope"] = "cross-target"
+                rendition["actionability"] = "review"
+
+            entry = rendition.get("entry")
+            if not isinstance(entry, dict):
+                continue
+            entry_groups = entry.setdefault("metadata", {}).setdefault(
+                "duplicateGroups", []
+            )
+            if group_id not in entry_groups:
+                entry_groups.append(group_id)
+            entry_metadata = entry["metadata"]
+            cross_groups = entry_metadata.setdefault(
+                "crossTargetDuplicateGroups", []
+            )
+            if group_id not in cross_groups:
+                cross_groups.append(group_id)
+            entry_metadata["crossTargetDuplicateCount"] = len(cross_groups)
+            entry_metadata["duplicateCount"] = len(entry_groups)
+            if not entry.get("duplicateGroup"):
+                entry["duplicateGroup"] = group_id
+                entry["duplicateType"] = "asset"
+                entry["scope"] = "cross-target"
+                entry["actionability"] = "review"
+            if "catalog-target-membership" not in entry.setdefault(
+                "insights", []
+            ):
+                entry["insights"].append("catalog-target-membership")
+
+    catalog_clusters: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for asset_group in asset_groups:
+        catalog_paths = tuple(str(path) for path in asset_group["catalogPaths"])
+        catalog_clusters.setdefault(catalog_paths, []).append(asset_group)
+
+    items: list[dict[str, Any]] = []
+    catalog_cluster_ids: dict[str, set[str]] = {}
+    catalog_asset_counts: dict[str, int] = {}
+    for index, (catalog_paths, groups) in enumerate(
+        sorted(
+            catalog_clusters.items(),
+            key=lambda item: (
+                -sum(int(group["repeatedSize"]) for group in item[1]),
+                item[0],
+            ),
+        ),
+        start=1,
+    ):
+        groups.sort(
+            key=lambda item: (
+                -int(item["repeatedSize"]),
+                str(item["name"]).casefold(),
+                str(item["group"]),
+            )
+        )
+        group_id = f"XC{index}"
+        scopes = {_embedded_bundle_scope(path) for path in catalog_paths}
+        catalog_names = {Path(path).name for path in catalog_paths}
+        items.append(
+            {
+                "group": group_id,
+                "name": (
+                    Path(catalog_paths[0]).name
+                    if len(catalog_names) == 1
+                    else "Asset catalog overlap"
+                ),
+                "kind": "asset catalog",
+                "duplicateType": "catalog",
+                "scope": "cross-target",
+                "actionability": "review",
+                "size": max(int(group["size"]) for group in groups),
+                "repeatedSize": sum(
+                    int(group["repeatedSize"]) for group in groups
+                ),
+                "targetCount": len(scopes),
+                "pathCount": len(catalog_paths),
+                "paths": list(catalog_paths[:50]),
+                "pathsOmitted": max(0, len(catalog_paths) - 50),
+                "catalogCount": len(catalog_paths),
+                "catalogPaths": list(catalog_paths[:50]),
+                "catalogPathsOmitted": max(0, len(catalog_paths) - 50),
+                "repeatedAssetCount": len(groups),
+                "repeatedRenditionCount": len(groups),
+                "repeatedAssetNameCount": len(
+                    {
+                        str(group.get("name") or "").casefold()
+                        for group in groups
+                        if str(group.get("name") or "")
+                    }
+                ),
+                "assetGroupCount": len(groups),
+                "assetGroups": groups[:MAX_INSIGHT_ITEMS],
+                "assetGroupsOmitted": max(0, len(groups) - MAX_INSIGHT_ITEMS),
+                "exactMatch": False,
+            }
+        )
+        for catalog_path in catalog_paths:
+            catalog_cluster_ids.setdefault(catalog_path, set()).add(group_id)
+            catalog_asset_counts[catalog_path] = (
+                catalog_asset_counts.get(catalog_path, 0) + len(groups)
+            )
+
+    for catalog_path, cluster_ids in catalog_cluster_ids.items():
+        catalog = record_by_path.get(catalog_path)
+        if catalog is None:
+            continue
+        ordered_ids = sorted(cluster_ids, key=lambda value: (len(value), value))
+        metadata = catalog.metadata
+        all_groups = metadata.setdefault("duplicateGroups", [])
+        for group_id in ordered_ids:
+            if group_id not in all_groups:
+                all_groups.append(group_id)
+        cross_groups = metadata.setdefault("crossTargetDuplicateGroups", [])
+        for group_id in ordered_ids:
+            if group_id not in cross_groups:
+                cross_groups.append(group_id)
+        metadata["duplicateCount"] = len(all_groups)
+        metadata["crossTargetDuplicateCount"] = len(cross_groups)
+        metadata["crossTargetRepeatedAssetCount"] = catalog_asset_counts[
+            catalog_path
+        ]
+        metadata["crossTargetRepeatedRenditionCount"] = catalog_asset_counts[
+            catalog_path
+        ]
+        metadata.setdefault("duplicateType", "catalog")
+        metadata.setdefault("duplicateGroup", ordered_ids[0])
+        metadata.setdefault("duplicateCatalogGroup", ordered_ids[0])
+        metadata.setdefault("scope", "cross-target")
+        metadata.setdefault("actionability", "review")
+        metadata.setdefault("exactMatch", False)
+        if "catalog-target-membership" not in catalog.insight_ids:
+            catalog.insight_ids.append("catalog-target-membership")
+
+    return items
+
+
 def _cross_target_duplicate_inventory(
     records: list[Record],
     component_duplicate_items: Iterable[dict[str, Any]] = (),
+    asset_renditions: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any]:
-    """Return exact loose-file repetition that spans independent runtimes."""
+    """Return exact repetition that spans independent runtime bundles."""
 
     groups: dict[tuple[str, int], list[Record]] = {}
     for record in records:
@@ -1734,6 +1964,7 @@ def _cross_target_duplicate_inventory(
             groups.setdefault((record.sha256, record.size), []).append(record)
 
     grouped_items: list[tuple[dict[str, Any], list[Record]]] = []
+    exact_catalog_sets: set[frozenset[str]] = set()
     component_roots = {
         str(path): str(item.get("group") or "")
         for item in component_duplicate_items
@@ -1795,6 +2026,8 @@ def _cross_target_duplicate_inventory(
                 group,
             )
         )
+        if group[0].category == "asset_catalog":
+            exact_catalog_sets.add(frozenset(paths))
 
     grouped_items.sort(
         key=lambda value: (
@@ -1808,6 +2041,20 @@ def _cross_target_duplicate_inventory(
         group_id = f"X{index}"
         item["group"] = group_id
         items.append(item)
+    items.extend(
+        _cross_target_asset_catalog_items(
+            records,
+            asset_renditions,
+            exact_catalog_sets,
+        )
+    )
+    items.sort(
+        key=lambda item: (
+            -int(item.get("repeatedSize", 0)),
+            str(item.get("name", "")).casefold(),
+            str(item.get("group", "")),
+        )
+    )
     return {
         "count": len(items),
         "totalRepeatedSize": sum(int(item["repeatedSize"]) for item in items),
@@ -1854,6 +2101,7 @@ def _architecture_inventory(
     app_info: dict[str, Any],
     root_name: str,
     component_duplicate_items: list[dict[str, Any]],
+    cross_target_duplicates: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a stable architecture inventory independent of recommendations."""
 
@@ -2083,9 +2331,13 @@ def _architecture_inventory(
         "linkingReviews": linking_reviews,
         "linkingReviewThresholdBytes": linking_review_threshold,
         "duplicateComponents": duplicates,
-        "crossTargetDuplicates": _cross_target_duplicate_inventory(
-            records,
-            component_duplicate_items,
+        "crossTargetDuplicates": (
+            cross_target_duplicates
+            if cross_target_duplicates is not None
+            else _cross_target_duplicate_inventory(
+                records,
+                component_duplicate_items,
+            )
         ),
     }
 
@@ -2747,6 +2999,11 @@ class BundleAnalyzer:
                 info_plist,
                 component_duplicate_items,
             )
+            cross_target_duplicates = _cross_target_duplicate_inventory(
+                records,
+                component_duplicate_items,
+                asset_renditions,
+            )
             self._attach_asset_rendition_metadata(asset_renditions)
             tree = self._build_tree(
                 prepared.app_root.name, records, component_duplicates
@@ -2757,6 +3014,7 @@ class BundleAnalyzer:
                 info_plist,
                 prepared.app_root.name,
                 component_duplicate_items,
+                cross_target_duplicates,
             )
             binaries = _binary_inventory(records, architecture["targets"])
             capability_declarations = _collect_capability_declarations(
@@ -3226,6 +3484,14 @@ class BundleAnalyzer:
                     "catalogPaths": list(catalog_paths[:50]),
                     "catalogPathsOmitted": max(0, len(catalog_paths) - 50),
                     "repeatedAssetCount": len(asset_groups),
+                    "repeatedRenditionCount": len(asset_groups),
+                    "repeatedAssetNameCount": len(
+                        {
+                            str(group.get("name") or "").casefold()
+                            for group in asset_groups
+                            if str(group.get("name") or "")
+                        }
+                    ),
                     "assetGroupCount": len(asset_groups),
                     "assetGroups": asset_groups[:MAX_INSIGHT_ITEMS],
                     "assetGroupsOmitted": max(
