@@ -24,6 +24,49 @@ from tests.helpers import make_app
 
 
 class AnalyzerTests(unittest.TestCase):
+    def test_binary_views_split_symbol_records_and_string_table(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = make_app(Path(directory))
+            report = BundleAnalyzer().analyze(app)
+
+        binary_node = next(
+            child for child in report["tree"]["children"] if child["name"] == "Test"
+        )
+        linkedit_node = next(
+            child
+            for child in binary_node["children"]
+            if child["name"] == "__LINKEDIT"
+        )
+        by_name = {child["name"]: child for child in linkedit_node["children"]}
+        self.assertEqual(by_name["Symbol records"]["size"], 32)
+        self.assertEqual(by_name["Symbol string table"]["size"], 14)
+        self.assertEqual(
+            sum(child["size"] for child in linkedit_node["children"]),
+            linkedit_node["size"],
+        )
+        self.assertEqual(
+            by_name["Symbol string table"]["metadata"]["loadCommand"],
+            "LC_SYMTAB",
+        )
+
+        binary = next(
+            item for item in report["binaries"]["items"] if item["name"] == "Test"
+        )
+        linkedit = next(
+            segment
+            for segment in binary["architectures"][0]["segments"]
+            if segment["name"] == "__LINKEDIT"
+        )
+        self.assertEqual(
+            [section["name"] for section in linkedit["sections"]],
+            ["Symbol records", "Symbol string table"],
+        )
+        self.assertEqual(linkedit["unattributedSize"], 0)
+
+        html = render_report_html(report)
+        self.assertIn("Symbol names are stored separately.", html)
+        self.assertIn("Symbol string table", html)
+
     def test_latest_iphone_delivery_selects_arm64e_from_fat_binary(self) -> None:
         record = Record(
             relative_path="Frameworks/Example.framework/Example",

@@ -941,6 +941,288 @@ def _assign_virtual_delivery_sizes(
             )
 
 
+def _integer(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _claim_segment_ranges(
+    ranges: Iterable[tuple[int, int]],
+    segment_offset: int,
+    segment_size: int,
+    claimed: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """Claim the still-unattributed portions of slice-relative file ranges."""
+
+    segment_end = segment_offset + max(0, segment_size)
+    fragments: list[tuple[int, int]] = []
+    for raw_offset, raw_size in ranges:
+        offset = _integer(raw_offset)
+        size = _integer(raw_size)
+        if offset < 0 or size <= 0:
+            continue
+        start = max(segment_offset, offset)
+        end = min(segment_end, offset + size)
+        if end <= start:
+            continue
+
+        available = [(start, end)]
+        for claimed_start, claimed_end in sorted(claimed):
+            remaining: list[tuple[int, int]] = []
+            for available_start, available_end in available:
+                if (
+                    claimed_end <= available_start
+                    or claimed_start >= available_end
+                ):
+                    remaining.append((available_start, available_end))
+                    continue
+                if available_start < claimed_start:
+                    remaining.append((available_start, claimed_start))
+                if claimed_end < available_end:
+                    remaining.append((claimed_end, available_end))
+            available = remaining
+            if not available:
+                break
+        fragments.extend(available)
+        claimed.extend(available)
+    return fragments
+
+
+def _mach_o_metadata_regions(
+    slice_info: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Return named file regions described by non-section Mach-O commands."""
+
+    regions: list[dict[str, Any]] = []
+    symbol_table = slice_info.get("symbol_table") or {}
+    if isinstance(symbol_table, dict):
+        symbol_count = max(0, _integer(symbol_table.get("count")))
+        entry_size = max(0, _integer(symbol_table.get("entry_size")))
+        strip = symbol_table.get("strip_rSTx") or {}
+        regions.extend(
+            (
+                {
+                    "name": "Symbol records",
+                    "kind": "symbol-records",
+                    "ranges": [
+                        (
+                            _integer(symbol_table.get("offset")),
+                            _integer(symbol_table.get("entry_bytes")),
+                        )
+                    ],
+                    "metadata": {
+                        "loadCommand": "LC_SYMTAB",
+                        "symbolCount": symbol_count,
+                        "entrySize": entry_size,
+                        "removableEstimate": max(
+                            0, _integer(strip.get("candidate_entry_bytes"))
+                        ),
+                    },
+                },
+                {
+                    "name": "Symbol string table",
+                    "kind": "symbol-strings",
+                    "ranges": [
+                        (
+                            _integer(symbol_table.get("string_offset")),
+                            _integer(symbol_table.get("string_bytes")),
+                        )
+                    ],
+                    "metadata": {
+                        "loadCommand": "LC_SYMTAB",
+                        "symbolCount": symbol_count,
+                        "removableEstimate": max(
+                            0, _integer(strip.get("estimated_string_bytes"))
+                        ),
+                    },
+                },
+            )
+        )
+
+    export_trie = slice_info.get("export_trie") or {}
+    if isinstance(export_trie, dict):
+        regions.append(
+            {
+                "name": "Dyld export trie",
+                "kind": "export-trie",
+                "ranges": [
+                    (
+                        _integer(export_trie.get("offset")),
+                        _integer(export_trie.get("size")),
+                    )
+                ],
+                "metadata": {
+                    "loadCommand": str(export_trie.get("source") or "dyld-info"),
+                    "symbolCount": max(
+                        0, _integer(export_trie.get("symbol_count"))
+                    ),
+                },
+            }
+        )
+
+    def command_regions(key: str) -> list[dict[str, Any]]:
+        value = slice_info.get(key)
+        if not isinstance(value, list):
+            return []
+        return [
+            item
+            for item in value
+            if isinstance(item, dict) and item.get("valid") is not False
+        ]
+
+    fixups = command_regions("fixup_regions")
+    if fixups:
+        regions.append(
+            {
+                "name": "Fixups",
+                "kind": "fixups",
+                "ranges": [
+                    (_integer(item.get("offset")), _integer(item.get("size")))
+                    for item in fixups
+                ],
+                "metadata": {
+                    "loadCommands": sorted(
+                        {str(item.get("source") or "dyld-info") for item in fixups}
+                    )
+                },
+            }
+        )
+
+    dynamic_tables = command_regions("dynamic_linking_regions")
+    if dynamic_tables:
+        regions.append(
+            {
+                "name": "Dynamic linking tables",
+                "kind": "dynamic-linking",
+                "ranges": [
+                    (_integer(item.get("offset")), _integer(item.get("size")))
+                    for item in dynamic_tables
+                ],
+                "metadata": {
+                    "loadCommands": sorted(
+                        {
+                            str(item.get("source") or "LC_DYSYMTAB")
+                            for item in dynamic_tables
+                        }
+                    )
+                },
+            }
+        )
+
+    code_signature = slice_info.get("code_signature") or {}
+    if isinstance(code_signature, dict):
+        regions.append(
+            {
+                "name": "Code signature",
+                "kind": "code-signature",
+                "ranges": [
+                    (
+                        _integer(code_signature.get("offset")),
+                        _integer(code_signature.get("size")),
+                    )
+                ],
+                "metadata": {"loadCommand": "LC_CODE_SIGNATURE"},
+            }
+        )
+    return regions
+
+
+def _binary_segment_parts(
+    slice_info: dict[str, Any], segment: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Partition one file-backed segment without double-counting regions."""
+
+    segment_offset = _integer(segment.get("file_offset"))
+    segment_size = max(0, _integer(segment.get("size")))
+    raw_sections = [
+        section
+        for section in segment.get("sections", [])
+        if isinstance(section, dict) and _integer(section.get("size")) > 0
+    ]
+    precise_sections = all("file_offset" in section for section in raw_sections)
+    if not precise_sections:
+        return [
+            {
+                "name": str(section.get("name") or "Unnamed section"),
+                "kind": "section",
+                "size": max(0, _integer(section.get("size"))),
+                "virtualSize": max(
+                    0, _integer(section.get("virtual_size"))
+                ),
+                "fileOffset": None,
+                "metadata": {},
+            }
+            for section in raw_sections
+        ]
+
+    claimed: list[tuple[int, int]] = []
+    parts: list[dict[str, Any]] = []
+    for section in raw_sections:
+        fragments = _claim_segment_ranges(
+            [
+                (
+                    _integer(section.get("file_offset")),
+                    _integer(section.get("size")),
+                )
+            ],
+            segment_offset,
+            segment_size,
+            claimed,
+        )
+        size = sum(end - start for start, end in fragments)
+        if size <= 0:
+            continue
+        reported_size = max(0, _integer(section.get("size")))
+        metadata: dict[str, Any] = {}
+        if size != reported_size:
+            metadata["reportedSize"] = reported_size
+        parts.append(
+            {
+                "name": str(section.get("name") or "Unnamed section"),
+                "kind": "section",
+                "size": size,
+                "virtualSize": max(
+                    0, _integer(section.get("virtual_size"))
+                ),
+                "fileOffset": min(start for start, _ in fragments),
+                "metadata": metadata,
+            }
+        )
+
+    for region in _mach_o_metadata_regions(slice_info):
+        ranges = list(region.get("ranges") or [])
+        fragments = _claim_segment_ranges(
+            ranges, segment_offset, segment_size, claimed
+        )
+        size = sum(end - start for start, end in fragments)
+        if size <= 0:
+            continue
+        reported_size = sum(max(0, _integer(item[1])) for item in ranges)
+        metadata = {
+            "attribution": "load-command",
+            **dict(region.get("metadata") or {}),
+            "fileRanges": [
+                {"offset": start, "size": end - start}
+                for start, end in fragments
+            ],
+        }
+        if size != reported_size:
+            metadata["reportedSize"] = reported_size
+        parts.append(
+            {
+                "name": str(region["name"]),
+                "kind": str(region["kind"]),
+                "size": size,
+                "virtualSize": size,
+                "fileOffset": min(start for start, _ in fragments),
+                "metadata": metadata,
+            }
+        )
+    return parts
+
+
 def _binary_children(
     info: dict[str, Any],
     file_size: int,
@@ -974,26 +1256,38 @@ def _binary_children(
                 continue
             section_nodes = [
                 {
-                    "name": str(section.get("name") or "Unnamed section"),
-                    "path": f"{prefix}::{segment.get('name')}::{section.get('name')}",
-                    "kind": "section",
+                    "name": str(part.get("name") or "Unnamed section"),
+                    "path": f"{prefix}::{segment.get('name')}::{part.get('name')}",
+                    "kind": str(part.get("kind") or "section"),
                     "category": "binary_section",
-                    "size": int(section.get("size", 0)),
-                    "compressedSize": int(section.get("size", 0)),
-                    "allocatedSize": int(section.get("size", 0)),
+                    "size": int(part.get("size", 0)),
+                    "compressedSize": int(part.get("size", 0)),
+                    "allocatedSize": int(part.get("size", 0)),
                     "children": [],
                     "metadata": {
                         "segment": segment.get("name"),
-                        "virtualSize": section.get("virtual_size", 0),
+                        "virtualSize": part.get("virtualSize", 0),
+                        "fileOffset": part.get("fileOffset"),
+                        **dict(part.get("metadata") or {}),
                     },
                     "insights": [],
                 }
-                for section in segment.get("sections", [])
-                if int(section.get("size", 0)) > 0
+                for part in _binary_segment_parts(slice_info, segment)
+                if int(part.get("size", 0)) > 0
             ]
-            section_nodes = _normalize_virtual_sizes(
-                section_nodes, segment_size, "Other segment data"
+            other_name = (
+                "Other __LINKEDIT data"
+                if str(segment.get("name") or "") == "__LINKEDIT"
+                else "Other segment data"
             )
+            section_nodes = _normalize_virtual_sizes(
+                section_nodes, segment_size, other_name
+            )
+            for child in section_nodes:
+                if not child.get("path"):
+                    child["path"] = (
+                        f"{prefix}::{segment.get('name')}::{child.get('name')}"
+                    )
             nodes.append(
                 {
                     "name": str(segment.get("name") or "Unnamed segment"),
@@ -1878,23 +2172,28 @@ def _binary_inventory(
                 segment_size = max(0, int(segment.get("size", 0) or 0))
                 if not segment_size:
                     continue
+                segment_parts = _binary_segment_parts(architecture, segment)
                 section_rows = sorted(
                     (
                         {
-                            "name": str(section.get("name") or "Unnamed section"),
-                            "size": max(0, int(section.get("size", 0) or 0)),
+                            "name": str(part.get("name") or "Unnamed section"),
+                            "kind": str(part.get("kind") or "section"),
+                            "size": max(0, int(part.get("size", 0) or 0)),
                             "virtualSize": max(
-                                0, int(section.get("virtual_size", 0) or 0)
+                                0, int(part.get("virtualSize", 0) or 0)
                             ),
+                            "fileOffset": part.get("fileOffset"),
+                            "metadata": dict(part.get("metadata") or {}),
                         }
-                        for section in segment.get("sections", [])
-                        if int(section.get("size", 0) or 0) > 0
+                        for part in segment_parts
+                        if int(part.get("size", 0) or 0) > 0
                     ),
                     key=lambda section: (-int(section["size"]), section["name"]),
                 )
+                segment_name = str(segment.get("name") or "Unnamed segment")
                 segment_rows.append(
                     {
-                        "name": str(segment.get("name") or "Unnamed segment"),
+                        "name": segment_name,
                         "size": segment_size,
                         "virtualSize": max(
                             0, int(segment.get("virtual_size", 0) or 0)
@@ -1907,6 +2206,11 @@ def _binary_inventory(
                             0,
                             segment_size
                             - sum(int(section["size"]) for section in section_rows),
+                        ),
+                        "unattributedName": (
+                            "Other __LINKEDIT data"
+                            if segment_name == "__LINKEDIT"
+                            else "Other file data"
                         ),
                     }
                 )

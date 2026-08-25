@@ -1139,6 +1139,18 @@
       width: min(1280px,100%);
       padding-bottom: 34px;
     }
+    .binary-explainer {
+      width: min(1280px,100%);
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid rgba(255,255,255,.075);
+      border-radius: 10px;
+      color: var(--muted);
+      background: rgba(255,255,255,.025);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    .binary-explainer strong { color: var(--ink); }
     .binaries-table {
       overflow-x: auto;
       overflow-y: hidden;
@@ -1299,6 +1311,10 @@
     }
     .binary-section strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; }
     .binary-section span { color: var(--faint); font-variant-numeric: tabular-nums; }
+    .binary-section.linkedit-part {
+      border: 1px solid rgba(85,199,238,.16);
+      background: rgba(18,103,132,.16);
+    }
 
     .capabilities-stack,
     .locales-stack {
@@ -1833,6 +1849,7 @@
           <h2>Binaries</h2>
           <div class="head-stat"><strong id="binary-count"></strong></div>
         </header>
+        <p class="binary-explainer"><strong>Symbol names are stored separately.</strong> LC_SYMTAB points to fixed-size symbol records and a separate symbol string table containing their names. When present, __LINKEDIT below also separates the dyld export trie, fixups, dynamic-linking tables and code signature.</p>
         <div class="binaries-stack" id="binaries-stack"></div>
       </section>
 
@@ -2795,13 +2812,18 @@
             const percentage = Math.max(1,Math.min(100,Number(segment.size || 0) / Math.max(1,Number(architecture.size || binary.size || 1)) * 100));
             const sections = [
               ...(segment.sections || []),
-              ...(Number(segment.unattributedSize || 0) > 0 ? [{name:"Other file data",size:Number(segment.unattributedSize)}] : [])
+              ...(Number(segment.unattributedSize || 0) > 0 ? [{name:segment.unattributedName || "Other file data",kind:"unattributed",size:Number(segment.unattributedSize)}] : [])
             ];
             return `<div class="binary-segment" style="--segment-color:${color}">
               <strong class="binary-segment-name">${esc(segment.name)}</strong>
               <span class="binary-segment-bar"><span style="width:${percentage.toFixed(2)}%"></span></span>
               <span class="binary-segment-size">${fmt(segment.size)}</span>
-              <div class="binary-sections">${sections.map(section => `<span class="binary-section"><strong>${esc(section.name)}</strong><span>${fmt(section.size)}</span></span>`).join("")}</div>
+              <div class="binary-sections">${sections.map(section => {
+                const linkeditPart = section.kind && !["section","unattributed"].includes(section.kind);
+                const commands = section.metadata?.loadCommands || [];
+                const source = section.metadata?.loadCommand || commands.join(", ");
+                return `<span class="binary-section${linkeditPart ? " linkedit-part" : ""}"${source ? ` title="${esc(source)}"` : ""}><strong>${esc(section.name)}</strong><span>${fmt(section.size)}</span></span>`;
+              }).join("")}</div>
             </div>`;
           }).join("") || `<div class="empty-state">No segments.</div>`}</div>
         </section>`;

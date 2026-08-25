@@ -52,6 +52,7 @@ LC_DYLD_INFO_ONLY = 0x80000022
 LC_ENCRYPTION_INFO_64 = 0x2C
 LC_BUILD_VERSION = 0x32
 LC_DYLD_EXPORTS_TRIE = 0x80000033
+LC_DYLD_CHAINED_FIXUPS = 0x80000034
 
 MH_EXECUTE = 0x2
 
@@ -1039,6 +1040,7 @@ def _thin_slice(
     duplicate_code_signature_command = False
     dedicated_export: tuple[int, int, str] | None = None
     legacy_export: tuple[int, int, str] | None = None
+    fixup_regions: list[dict[str, Any]] = []
     encrypted = False
     uuid = None
     platform = None
@@ -1124,6 +1126,7 @@ def _thin_slice(
                         "segment": _cstring(section_segment),
                         "size": int(section_size),
                         "virtual_size": int(original_size),
+                        "file_offset": int(section_offset),
                     }
                 )
                 if decoded_section_name == "__objc_imageinfo" and section_size >= 8:
@@ -1207,6 +1210,7 @@ def _thin_slice(
                         "segment": _cstring(section[1]),
                         "size": int(section_size),
                         "virtual_size": int(section[3]),
+                        "file_offset": int(section_offset),
                     }
                 )
                 if decoded_section_name == "__objc_imageinfo" and section_size >= 8:
@@ -1286,6 +1290,21 @@ def _thin_slice(
                 "LC_DYLD_EXPORTS_TRIE",
             )
 
+        elif command == LC_DYLD_CHAINED_FIXUPS and command_size >= 16:
+            _, _, data_offset, data_size = struct.unpack_from(
+                endian + "IIII", commands, cursor
+            )
+            fixup_regions.append(
+                {
+                    "source": "LC_DYLD_CHAINED_FIXUPS",
+                    "offset": int(data_offset),
+                    "size": int(data_size),
+                    "valid": _range_is_valid(
+                        int(data_offset), int(data_size), slice_size
+                    ),
+                }
+            )
+
         elif command in {LC_DYLD_INFO, LC_DYLD_INFO_ONLY} and command_size >= 48:
             fields = struct.unpack_from(endian + "12I", commands, cursor)
             source = (
@@ -1294,6 +1313,26 @@ def _thin_slice(
                 else "LC_DYLD_INFO"
             )
             legacy_export = (int(fields[10]), int(fields[11]), source)
+            for label, field_index in (
+                ("rebase", 2),
+                ("bind", 4),
+                ("weak-bind", 6),
+                ("lazy-bind", 8),
+            ):
+                data_offset = int(fields[field_index])
+                data_size = int(fields[field_index + 1])
+                if data_size <= 0:
+                    continue
+                fixup_regions.append(
+                    {
+                        "source": f"{source}:{label}",
+                        "offset": data_offset,
+                        "size": data_size,
+                        "valid": _range_is_valid(
+                            data_offset, data_size, slice_size
+                        ),
+                    }
+                )
 
         elif command in {
             LC_LOAD_DYLIB,
@@ -1409,6 +1448,43 @@ def _thin_slice(
         swift_abi_version,
     )
 
+    dynamic_linking_regions: list[dict[str, Any]] = []
+    if dysymtab is not None:
+        for label, offset_key, count_key, entry_size in (
+            (
+                "indirect-symbols",
+                "indirect_symbol_offset",
+                "indirect_symbol_count",
+                4,
+            ),
+            (
+                "external-relocations",
+                "external_relocation_offset",
+                "external_relocation_count",
+                8,
+            ),
+            (
+                "local-relocations",
+                "local_relocation_offset",
+                "local_relocation_count",
+                8,
+            ),
+        ):
+            data_offset = int(dysymtab[offset_key])
+            data_size = int(dysymtab[count_key]) * entry_size
+            if data_size <= 0:
+                continue
+            dynamic_linking_regions.append(
+                {
+                    "source": f"LC_DYSYMTAB:{label}",
+                    "offset": data_offset,
+                    "size": data_size,
+                    "valid": _range_is_valid(
+                        data_offset, data_size, slice_size
+                    ),
+                }
+            )
+
     export_trie: dict[str, Any] | None = None
     export_command = dedicated_export or legacy_export
     if export_command is not None:
@@ -1454,6 +1530,8 @@ def _thin_slice(
         "symbol_table": symbol_table,
         "dynamic_symbol_table": dynamic_symbol_table,
         "export_trie": export_trie,
+        "fixup_regions": fixup_regions,
+        "dynamic_linking_regions": dynamic_linking_regions,
         "code_signature": code_signature,
         "entitlements": entitlements,
         "entitlements_source": entitlements_source,

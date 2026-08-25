@@ -162,6 +162,26 @@ try {
       `Asset-catalog smoke failure: parsed ${coverage.parsedCatalogCount || 0}/${coverage.catalogCount || 0}.`,
     );
   }
+  if (process.env.EXPECT_SYMBOL_STRING_TABLE === "1") {
+    const treeContains = (node, name) =>
+      String(node?.name || "") === name ||
+      Array.from(node?.children || []).some((child) => treeContains(child, name));
+    const inventoryContains = Array.from(analysis.binaries?.items || []).some(
+      (binary) =>
+        Array.from(binary.architectures || []).some((architecture) =>
+          Array.from(architecture.segments || []).some((segment) =>
+            Array.from(segment.sections || []).some(
+              (section) => section.name === "Symbol string table",
+            ),
+          ),
+        ),
+    );
+    if (!treeContains(analysis.tree, "Symbol string table") || !inventoryContains) {
+      throw new Error(
+        "Symbol string table is missing from the treemap or Binaries inventory.",
+      );
+    }
+  }
   const expectedInsights = (process.env.EXPECT_INSIGHT_IDS || "")
     .split(",")
     .map((value) => value.trim())

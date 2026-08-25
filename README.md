@@ -137,6 +137,12 @@ The two findings are intentionally separate:
   calls out `__mh_execute_header`/Crashlytics, and warns about `dlsym` and plug-in
   entry points.
 
+The bundle map and expanded Binaries view also split non-section
+`__LINKEDIT` data by its load-command file ranges. Symbol records and the
+separate symbol-name string table appear as distinct `LC_SYMTAB` entries;
+export tries, fixups, dynamic-linking tables, code signatures, and remaining
+`__LINKEDIT` bytes are attributed without double-counting.
+
 The Architecture view resolves load-command consumers but does not invent a
 static-linking saving. Predicting dead stripping requires the original static
 archive, link map, or dSYM; an IPA alone cannot reconstruct linker object

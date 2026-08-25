@@ -16,34 +16,49 @@ import zlib
 
 
 def _write_macho(path: Path) -> None:
-    """Write a minimal arm64 Mach-O with one file-backed __text section."""
+    """Write a minimal arm64 Mach-O with text and linkedit metadata."""
 
     header_size = 32
-    segment_command_size = 72 + 80
+    text_segment_command_size = 72 + 80
+    linkedit_segment_command_size = 72
     symbol_command_size = 24
-    command_size = segment_command_size + symbol_command_size
+    command_size = (
+        text_segment_command_size
+        + linkedit_segment_command_size
+        + symbol_command_size
+    )
     section_offset = header_size + command_size
-    file_size = section_offset + 64
+    text_size = section_offset + 64
+    symbol_names = b"\0_main\0_local\0"
+    symbol_records = b"".join(
+        (
+            struct.pack("<IBBHQ", 1, 0x0F, 1, 0, section_offset),
+            struct.pack("<IBBHQ", 7, 0x0E, 1, 0, section_offset + 16),
+        )
+    )
+    symbol_offset = text_size
+    string_offset = symbol_offset + len(symbol_records)
+    linkedit_size = len(symbol_records) + len(symbol_names)
     header = struct.pack(
         "<IiiIIIII",
         0xFEEDFACF,
         0x0100000C,
         0,
         2,
-        2,
+        3,
         command_size,
         0,
         0,
     )
-    segment = struct.pack(
+    text_segment = struct.pack(
         "<II16sQQQQiiII",
         0x19,
-        segment_command_size,
+        text_segment_command_size,
         b"__TEXT\0" + b"\0" * 9,
         0,
-        file_size,
+        text_size,
         0,
-        file_size,
+        text_size,
         7,
         5,
         1,
@@ -64,8 +79,39 @@ def _write_macho(path: Path) -> None:
         0,
         0,
     )
-    symbols = struct.pack("<IIIIII", 0x2, 24, 0, 10, 0, 100)
-    path.write_bytes(header + segment + section + symbols + b"\xAA" * 64)
+    linkedit_segment = struct.pack(
+        "<II16sQQQQiiII",
+        0x19,
+        linkedit_segment_command_size,
+        b"__LINKEDIT\0" + b"\0" * 5,
+        text_size,
+        linkedit_size,
+        text_size,
+        linkedit_size,
+        7,
+        1,
+        0,
+        0,
+    )
+    symbols = struct.pack(
+        "<IIIIII",
+        0x2,
+        symbol_command_size,
+        symbol_offset,
+        2,
+        string_offset,
+        len(symbol_names),
+    )
+    path.write_bytes(
+        header
+        + text_segment
+        + section
+        + linkedit_segment
+        + symbols
+        + b"\xAA" * 64
+        + symbol_records
+        + symbol_names
+    )
     path.chmod(0o755)
 
 

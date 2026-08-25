@@ -691,7 +691,7 @@ class MachOTests(unittest.TestCase):
             architecture = info["architectures"][0]
             self.assertEqual(architecture["architecture"], "arm64")
             self.assertEqual(architecture["file_type"], "executable")
-            self.assertEqual(architecture["symbol_table_bytes"], 260)
+            self.assertEqual(architecture["symbol_table_bytes"], 46)
             self.assertEqual(architecture["segments"][0]["name"], "__TEXT")
             self.assertEqual(
                 architecture["segments"][0]["sections"][0]["name"], "__text"
@@ -699,6 +699,40 @@ class MachOTests(unittest.TestCase):
             self.assertEqual(
                 architecture["segments"][0]["sections"][0]["size"], 64
             )
+            self.assertEqual(
+                architecture["segments"][0]["sections"][0]["file_offset"],
+                280,
+            )
+            self.assertEqual(architecture["segments"][1]["name"], "__LINKEDIT")
+            self.assertEqual(architecture["symbol_table"]["entry_bytes"], 32)
+            self.assertEqual(architecture["symbol_table"]["string_bytes"], 14)
+
+    def test_records_chained_fixup_region(self) -> None:
+        data_offset = 48
+        data_size = 12
+        command = struct.pack(
+            "<IIII", 0x80000034, 16, data_offset, data_size
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Fixups"
+            path.write_bytes(
+                _macho64_with_commands([command]) + b"\xA5" * data_size
+            )
+            info = parse_macho(path)
+
+        self.assertIsNotNone(info)
+        assert info is not None
+        self.assertEqual(
+            info["architectures"][0]["fixup_regions"],
+            [
+                {
+                    "source": "LC_DYLD_CHAINED_FIXUPS",
+                    "offset": data_offset,
+                    "size": data_size,
+                    "valid": True,
+                }
+            ],
+        )
 
     def test_rejects_non_macho(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
