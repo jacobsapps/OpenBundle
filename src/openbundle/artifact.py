@@ -40,6 +40,7 @@ class PreparedArtifact:
     artifact_name: str = ""
     artifact_size: int | None = None
     artifact_modified_at: float | None = None
+    archive_overhead_size: int = 0
 
     def __post_init__(self) -> None:
         # Cache source facts before browser hosts release a large compressed
@@ -220,6 +221,11 @@ def _safe_extract_zip(path: Path) -> PreparedArtifact:
     try:
         with zipfile.ZipFile(path) as archive:
             planned_files = _planned_zip_files(archive)
+            archive_overhead_size = max(
+                0,
+                path.stat().st_size
+                - sum(int(entry.compress_size) for entry in archive.infolist()),
+            )
             total_written = 0
             for entry, parts, unix_mode in planned_files:
                 destination = output_root.joinpath(*parts)
@@ -250,6 +256,7 @@ def _safe_extract_zip(path: Path) -> PreparedArtifact:
                 source_stat = path.stat()
                 prepared.artifact_size = source_stat.st_size
                 prepared.artifact_modified_at = source_stat.st_mtime
+                prepared.archive_overhead_size = archive_overhead_size
                 return prepared
 
         payload = output_root / "Payload"
@@ -264,6 +271,7 @@ def _safe_extract_zip(path: Path) -> PreparedArtifact:
             archive_root=None,
             zip_sizes=compressed_sizes,
             temp_dir=temporary,
+            archive_overhead_size=archive_overhead_size,
         )
     except ArtifactError:
         temporary.cleanup()

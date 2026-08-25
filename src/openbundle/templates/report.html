@@ -250,6 +250,7 @@
     .rail-metric { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
     .rail-metric span { color: var(--muted); font-size: 11px; }
     .rail-metric strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+    .rail-metric-note { color: #aaa19e; font-size: 9px; letter-spacing: .02em; }
 
     .workspace { min-width: 0; min-height: 0; overflow: hidden; }
     .view {
@@ -1787,7 +1788,7 @@
               <button class="back-button" id="back-button" aria-label="Back one bundle level" hidden>←</button>
               <div class="crumbs" id="crumbs" aria-label="Bundle path"></div>
             </div>
-            <div class="treemap" id="bundle-map" role="group" aria-label="Unpacked bundle size treemap"></div>
+            <div class="treemap" id="bundle-map" role="group" aria-label="Bundle size treemap"></div>
             <span class="sr-only" id="map-status" aria-live="polite"></span>
           </section>
           <aside class="contents-card">
@@ -1855,7 +1856,8 @@
   (() => {
     "use strict";
     const REPORT = JSON.parse(document.getElementById("report-data").textContent);
-    const METRIC = "size";
+    const HAS_DELIVERY_METRICS = REPORT.metrics?.delivery?.kind === "latest-iphone-thinning-estimate";
+    const METRIC = HAS_DELIVERY_METRICS ? "installSize" : "size";
     const QUALIFYING_INSIGHTS = [...REPORT.insights]
       .filter(item => typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000)
       .sort((a,b) => b.savings - a.savings || String(a.title || a.id).localeCompare(String(b.title || b.id)));
@@ -2001,9 +2003,13 @@
       ? `<span class="app-icon"><img src="${esc(app.iconDataURL)}" alt=""></span>`
       : `<span class="app-icon">${esc(initials || "A")}</span>`;
     document.getElementById("rail-app").innerHTML = `${icon}<h1>${esc(app.name)}</h1>`;
+    const hasDeliveryMetrics = HAS_DELIVERY_METRICS;
+    const deliveryDownload = Number(metrics.downloadSize ?? metrics.artifactSize ?? metrics.compressedSize ?? 0);
+    const deliveryInstall = Number(metrics.installSize ?? metrics.logicalSize ?? 0);
     document.getElementById("rail-metrics").innerHTML = `
-      <div class="rail-metric"><span>Download</span><strong>${fmt(metrics.artifactSize || metrics.compressedSize)}</strong></div>
-      <div class="rail-metric"><span>Unpacked</span><strong>${fmt(metrics.logicalSize)}</strong></div>`;
+      <div class="rail-metric"><span>${hasDeliveryMetrics ? "Download" : "Archive"}</span><strong>${fmt(deliveryDownload)}</strong></div>
+      <div class="rail-metric"><span>${hasDeliveryMetrics ? "Install" : "Unpacked"}</span><strong>${fmt(deliveryInstall)}</strong></div>
+      ${hasDeliveryMetrics ? '<div class="rail-metric-note">Latest iPhone estimate</div>' : ""}`;
 
     function showView(viewName) {
       document.querySelectorAll(".side-nav button[data-view]").forEach(button => {
@@ -2052,6 +2058,8 @@
         name:`${rest.length} smaller`, path:`${rest[0]?.path || "root"}::smaller`, kind:"group", category:restCategories.size === 1 ? [...restCategories][0] : "other", children:rest,
         size:rest.reduce((sum,item) => sum + Number(item.size || 0),0),
         compressedSize:rest.reduce((sum,item) => sum + Number(item.compressedSize || 0),0),
+        installSize:rest.reduce((sum,item) => sum + nodeSize(item),0),
+        downloadSize:rest.reduce((sum,item) => sum + Number(item.downloadSize ?? item.compressedSize ?? 0),0),
         allocatedSize:rest.reduce((sum,item) => sum + nodeSize(item),0), metadata:{fileCount:rest.length},
         insights:[...new Set(rest.flatMap(item => item.insights || []))]
       }];
@@ -2197,7 +2205,7 @@
       const root = focusNode();
       map.replaceChildren();
       map.classList.remove("animating");
-      map.setAttribute("aria-label",`${root.name}, unpacked bundle size treemap`);
+      map.setAttribute("aria-label",`${root.name}, ${HAS_DELIVERY_METRICS ? "install" : "unpacked bundle"} size treemap`);
       document.getElementById("duplicate-map-key").hidden = !nodeHasDuplicateEvidence(root);
       renderCrumbs();
       document.getElementById("contents-list").innerHTML = categoryTotals(root).map(([id,value]) => `

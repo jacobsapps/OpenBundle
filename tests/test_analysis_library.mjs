@@ -58,6 +58,32 @@ test("imports raw OpenBundle JSON and normalizes a legacy schema marker", () => 
   assert.equal(imported.filename, "example.json");
   assert.equal(imported.report.schemaVersion, 1);
   assert.equal(imported.report.metrics.logicalSize, 1000);
+  assert.equal(imported.report.metrics.installSize, 1000);
+  assert.equal(imported.report.metrics.downloadSize, 800);
+  assert.equal(imported.report.tree.installSize, 1000);
+});
+
+test("comparison prefers delivery download and install metrics", () => {
+  const before = report({ download: 800, unpacked: 1_000 });
+  const after = report({ download: 900, unpacked: 1_200 });
+  before.metrics.downloadSize = 500;
+  before.metrics.installSize = 700;
+  after.metrics.downloadSize = 550;
+  after.metrics.installSize = 770;
+
+  const comparison = compareReports(before, after);
+  assert.deepEqual(comparison.metrics.download, {
+    before: 500,
+    after: 550,
+    delta: 50,
+    percent: 10,
+  });
+  assert.deepEqual(comparison.metrics.install, {
+    before: 700,
+    after: 770,
+    delta: 70,
+    percent: 10,
+  });
 });
 
 test("extracts report JSON from HTML without executing imported scripts", () => {

@@ -362,7 +362,7 @@ try {
     reportUI?.oversizedGroupHeaders > 0 ||
     reportUI?.reportNavCount !== 7 ||
     reportUI?.visibleReportNavCount !== reportUI?.expectedVisibleReportNavCount ||
-    JSON.stringify(reportUI?.metricLabels) !== JSON.stringify(["Download","Unpacked"]) ||
+    JSON.stringify(reportUI?.metricLabels) !== JSON.stringify(["Download","Install"]) ||
     reportUI?.hasInventory ||
     reportUI?.hasFileBrowser ||
     reportUI?.hasJSONControl ||

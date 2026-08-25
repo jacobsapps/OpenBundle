@@ -5,14 +5,17 @@ OpenBundle vendors the generated browser module from
 `dee176b984598efbdf02ed2834aeb7cd01386046`.
 
 The upstream project is MIT licensed; its license is included beside this
-file. `openbundle.patch` adds two read-only fields to the WASM response:
+file. `openbundle.patch` adds read-only analysis data to the WASM response:
 
-- the serialized CoreUI rendition size (`CSIHeader::size_on_disk()`), and
-- whether the resolved rendition declares itself opaque.
+- serialized CoreUI rendition and payload sizes,
+- whether the resolved rendition declares itself opaque, and
+- a complete compact inventory of rendition trait keys used for device
+  thinning.
 
-They let the browser report honest per-rendition bytes and avoid proposing a
-JPEG conversion for an image that requires alpha. The patch does not alter the
-CoreUI parser or decoder.
+These fields let the browser preserve CoreUI overhead in conversion estimates,
+avoid proposing JPEG for an image that requires alpha, and estimate the catalog
+bytes delivered to a current iPhone. The patch does not alter the CoreUI parser
+or decoder.
 
 Rebuild the checked-in module with:
 

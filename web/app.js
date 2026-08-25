@@ -473,9 +473,13 @@ function renderLibrary({ focusAction = focusedLibraryAction() } = {}) {
     if (saved) identity.append(element("span", "", `Saved ${saved}`));
     row.append(identity);
 
+    const deliveryMetrics = record.installSize != null;
     for (const [label, value] of [
-      ["Download", record.downloadSize],
-      ["Unpacked", record.unpackedSize],
+      [deliveryMetrics ? "Download" : "Archive", record.downloadSize],
+      [
+        deliveryMetrics ? "Install" : "Unpacked",
+        record.installSize ?? record.unpackedSize,
+      ],
     ]) {
       const metric = element("div", "library-metric");
       metric.append(element("span", "", label));
@@ -830,8 +834,18 @@ function renderComparison(before, after) {
   }
 
   const metrics = element("div", "comparison-metrics");
-  metrics.append(metricCard("Download", compared.metrics.download));
-  metrics.append(metricCard("Unpacked", compared.metrics.unpacked));
+  metrics.append(
+    metricCard(
+      compared.deliveryMetricsAvailable ? "Download" : "Archive",
+      compared.metrics.download,
+    ),
+  );
+  metrics.append(
+    metricCard(
+      compared.deliveryMetricsAvailable ? "Install" : "Unpacked",
+      compared.metrics.install,
+    ),
+  );
   comparisonContent.append(metrics);
   appendChangeSection(
     comparisonContent,

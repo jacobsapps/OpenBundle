@@ -36,6 +36,14 @@ class ArtifactTests(unittest.TestCase):
                 self.assertEqual(prepared.artifact_kind, "ipa")
                 self.assertTrue((prepared.app_root / "Info.plist").is_file())
                 self.assertFalse((Path(prepared.temp_dir.name).parent / "outside.txt").exists())
+                with zipfile.ZipFile(ipa) as archive:
+                    expected_overhead = ipa.stat().st_size - sum(
+                        entry.compress_size for entry in archive.infolist()
+                    )
+                self.assertEqual(
+                    prepared.archive_overhead_size,
+                    expected_overhead,
+                )
 
     def test_ignores_windows_style_path_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

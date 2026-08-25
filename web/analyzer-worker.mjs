@@ -439,14 +439,14 @@ json.dumps(
         "summary": {
             "name": analysis["app"]["name"],
             "artifactName": input_name,
-            "logicalSize": analysis["metrics"]["logicalSize"],
+            "installSize": analysis["metrics"]["installSize"],
         },
     },
     ensure_ascii=False,
 )
     `);
     const result = JSON.parse(payload);
-    result.summary.logicalSize = formatBytes(result.summary.logicalSize);
+    result.summary.installSize = formatBytes(result.summary.installSize);
     self.postMessage({ type: "result", ...result });
   } catch (error) {
     self.postMessage({

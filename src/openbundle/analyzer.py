@@ -99,10 +99,24 @@ class Record:
     virtual_children: list[dict[str, Any]] = field(default_factory=list)
     duplicate_group: str | None = None
     insight_ids: list[str] = field(default_factory=list)
+    install_size: int | None = None
+    download_size: int | None = None
 
     @property
     def name(self) -> str:
         return Path(self.relative_path).name
+
+    @property
+    def delivered_install_size(self) -> int:
+        return self.size if self.install_size is None else self.install_size
+
+    @property
+    def delivered_download_size(self) -> int:
+        return (
+            self.compressed_size
+            if self.download_size is None
+            else self.download_size
+        )
 
 
 def _progress(callback: Progress | None, message: str) -> None:
@@ -891,6 +905,40 @@ def _normalize_virtual_sizes(
             }
         )
     return children
+
+
+def _assign_virtual_delivery_sizes(
+    children: list[dict[str, Any]], install_size: int, download_size: int
+) -> None:
+    if not children:
+        return
+    universal_size = sum(max(0, int(child.get("size", 0))) for child in children)
+    if universal_size <= 0:
+        return
+
+    def assign(metric: str, total: int) -> None:
+        consumed = 0
+        for index, child in enumerate(children):
+            if index == len(children) - 1:
+                value = max(0, total - consumed)
+            else:
+                value = max(
+                    0,
+                    total * int(child.get("size", 0)) // universal_size,
+                )
+                consumed += value
+            child[metric] = value
+
+    assign("installSize", install_size)
+    assign("downloadSize", download_size)
+    for child in children:
+        nested = child.get("children", [])
+        if isinstance(nested, list) and nested:
+            _assign_virtual_delivery_sizes(
+                nested,
+                int(child.get("installSize", 0)),
+                int(child.get("downloadSize", 0)),
+            )
 
 
 def _binary_children(
@@ -2079,6 +2127,80 @@ def _representative_asset_rendition(
     )
 
 
+def _scaled_compressed_size(
+    compressed_size: int, universal_size: int, delivered_size: int
+) -> int:
+    if universal_size <= 0 or delivered_size >= universal_size:
+        return compressed_size
+    return max(0, round(compressed_size * delivered_size / universal_size))
+
+
+def _apply_catalog_delivery_estimate(
+    record: Record, diagnostics: dict[str, Any]
+) -> bool:
+    estimate = diagnostics.get("deliveryEstimate")
+    if not isinstance(estimate, dict) or estimate.get("complete") is not True:
+        return False
+    delivered_size = estimate.get("estimatedSize")
+    if (
+        not isinstance(delivered_size, int)
+        or isinstance(delivered_size, bool)
+        or delivered_size <= 0
+        or delivered_size > record.size
+    ):
+        return False
+
+    record.install_size = delivered_size
+    record.download_size = _scaled_compressed_size(
+        record.compressed_size, record.size, delivered_size
+    )
+    record.metadata["deliveryEstimate"] = {
+        "target": "latest-iphone",
+        "universalSize": record.size,
+        "installSize": delivered_size,
+        "entryCount": int(estimate.get("entryCount", 0) or 0),
+        "selectedEntryCount": int(
+            estimate.get("selectedEntryCount", 0) or 0
+        ),
+    }
+    return True
+
+
+def _apply_macho_delivery_estimate(record: Record) -> bool:
+    if not record.macho or not record.macho.get("is_fat"):
+        return False
+    architectures = record.macho.get("architectures", [])
+    selected: dict[str, Any] | None = None
+    for preferred in ("arm64e", "arm64"):
+        selected = next(
+            (
+                architecture
+                for architecture in architectures
+                if architecture.get("architecture") == preferred
+            ),
+            None,
+        )
+        if selected is not None:
+            break
+    if selected is None:
+        return False
+    delivered_size = int(selected.get("size", 0) or 0)
+    if delivered_size <= 0 or delivered_size >= record.size:
+        return False
+
+    record.install_size = delivered_size
+    record.download_size = _scaled_compressed_size(
+        record.compressed_size, record.size, delivered_size
+    )
+    record.metadata["deliveryEstimate"] = {
+        "target": "latest-iphone",
+        "universalSize": record.size,
+        "installSize": delivered_size,
+        "architecture": str(selected.get("architecture") or "arm64"),
+    }
+    return True
+
+
 class BundleAnalyzer:
     """Analyze one iOS artifact and return report-ready JSON data."""
 
@@ -2211,6 +2333,7 @@ class BundleAnalyzer:
 
             asset_renditions: list[dict[str, Any]] = []
             expanded_catalogs = 0
+            delivery_catalog_count = 0
             asset_catalog_coverage = {
                 "catalogCount": 0,
                 "parsedCatalogCount": 0,
@@ -2236,6 +2359,8 @@ class BundleAnalyzer:
                 )
                 if diagnostics:
                     record.metadata["assetAnalysis"] = diagnostics
+                    if _apply_catalog_delivery_estimate(record, diagnostics):
+                        delivery_catalog_count += 1
                     if not diagnostics.get("failed"):
                         asset_catalog_coverage["parsedCatalogCount"] += 1
                     asset_catalog_coverage["entryCount"] += int(
@@ -2272,15 +2397,23 @@ class BundleAnalyzer:
                     record.virtual_children = _normalize_virtual_sizes(
                         children, record.size, "Catalog metadata & packing"
                     )
+                    _assign_virtual_delivery_sizes(
+                        record.virtual_children,
+                        record.delivered_install_size,
+                        record.delivered_download_size,
+                    )
                     for child in record.virtual_children:
                         if not child.get("path"):
                             child["path"] = f"{record.relative_path}::catalog-overhead"
                     asset_renditions.extend(renditions)
 
             linkmaps_used = 0
+            delivery_binary_count = 0
             for record in records:
                 if not record.macho:
                     continue
+                if _apply_macho_delivery_estimate(record):
+                    delivery_binary_count += 1
                 compile_units = _linkmap_for_binary(record, prepared.linkmaps)
                 if compile_units:
                     linkmaps_used += 1
@@ -2293,6 +2426,11 @@ class BundleAnalyzer:
                     record.size,
                     record.relative_path,
                     compile_units or None,
+                )
+                _assign_virtual_delivery_sizes(
+                    record.virtual_children,
+                    record.delivered_install_size,
+                    record.delivered_download_size,
                 )
 
             component_duplicates, component_duplicate_items = (
@@ -2328,6 +2466,13 @@ class BundleAnalyzer:
             total_size = sum(record.size for record in records)
             compressed_size = sum(record.compressed_size for record in records)
             allocated_size = sum(record.allocated_size for record in records)
+            install_size = sum(
+                record.delivered_install_size for record in records
+            )
+            download_size = (
+                sum(record.delivered_download_size for record in records)
+                + prepared.archive_overhead_size
+            )
             executable = str(info_plist.get("CFBundleExecutable") or "")
             binary = next(
                 (
@@ -2401,10 +2546,28 @@ class BundleAnalyzer:
                 ).isoformat(),
             }
             metrics = {
+                "installSize": install_size,
+                "downloadSize": download_size,
                 "logicalSize": total_size,
                 "compressedSize": compressed_size,
                 "allocatedSize": allocated_size,
                 "artifactSize": prepared.artifact_size,
+                "delivery": {
+                    "kind": "latest-iphone-thinning-estimate",
+                    "target": "Latest iPhone (3x, P3, arm64)",
+                    "estimated": True,
+                    "installDefinition": "Uncompressed bytes delivered in the thinned app bundle",
+                    "downloadDefinition": "Compressed bytes delivered for the thinned app bundle",
+                    "assetCatalogCount": asset_catalog_coverage["catalogCount"],
+                    "assetCatalogEstimateCount": delivery_catalog_count,
+                    "assetCatalogFallbackCount": max(
+                        0,
+                        asset_catalog_coverage["catalogCount"]
+                        - delivery_catalog_count,
+                    ),
+                    "binarySliceEstimateCount": delivery_binary_count,
+                    "archiveOverheadSize": prepared.archive_overhead_size,
+                },
                 "fileCount": len(records),
                 "smallFileCount": sum(record.size < 4096 for record in records),
                 "frameworkCount": len(
@@ -4355,10 +4518,19 @@ class BundleAnalyzer:
         grouped: dict[str, dict[str, int]] = {}
         for record in records:
             category = grouped.setdefault(
-                record.category, {"size": 0, "compressedSize": 0, "fileCount": 0}
+                record.category,
+                {
+                    "size": 0,
+                    "compressedSize": 0,
+                    "installSize": 0,
+                    "downloadSize": 0,
+                    "fileCount": 0,
+                },
             )
             category["size"] += record.size
             category["compressedSize"] += record.compressed_size
+            category["installSize"] += record.delivered_install_size
+            category["downloadSize"] += record.delivered_download_size
             category["fileCount"] += 1
         return [
             {
@@ -4379,6 +4551,8 @@ class BundleAnalyzer:
             "category": record.category,
             "size": record.size,
             "compressedSize": record.compressed_size,
+            "installSize": record.delivered_install_size,
+            "downloadSize": record.delivered_download_size,
             "allocatedSize": record.allocated_size,
             "children": record.virtual_children,
             "metadata": record.metadata,
@@ -4399,6 +4573,8 @@ class BundleAnalyzer:
             "category": "other",
             "size": 0,
             "compressedSize": 0,
+            "installSize": 0,
+            "downloadSize": 0,
             "allocatedSize": 0,
             "children": [],
             "metadata": {},
@@ -4419,6 +4595,8 @@ class BundleAnalyzer:
                         "category": "other",
                         "size": 0,
                         "compressedSize": 0,
+                        "installSize": 0,
+                        "downloadSize": 0,
                         "allocatedSize": 0,
                         "children": [],
                         "metadata": {
@@ -4447,6 +4625,18 @@ class BundleAnalyzer:
             node["size"] = sum(int(child.get("size", 0)) for child in children)
             node["compressedSize"] = sum(
                 int(child.get("compressedSize", 0)) for child in children
+            )
+            node["installSize"] = sum(
+                int(child.get("installSize", child.get("size", 0)))
+                for child in children
+            )
+            node["downloadSize"] = sum(
+                int(
+                    child.get(
+                        "downloadSize", child.get("compressedSize", 0)
+                    )
+                )
+                for child in children
             )
             node["allocatedSize"] = sum(
                 int(child.get("allocatedSize", 0)) for child in children
@@ -4522,6 +4712,15 @@ class BundleAnalyzer:
                         "category": node.get("category", "other"),
                         "size": int(node.get("size", 0)),
                         "compressedSize": int(node.get("compressedSize", 0)),
+                        "installSize": int(
+                            node.get("installSize", node.get("size", 0))
+                        ),
+                        "downloadSize": int(
+                            node.get(
+                                "downloadSize",
+                                node.get("compressedSize", 0),
+                            )
+                        ),
                         "fileCount": int(
                             node.get("metadata", {}).get("fileCount", 0)
                         ),

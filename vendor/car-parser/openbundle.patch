@@ -1,8 +1,28 @@
+diff --git a/car-wasm/Cargo.toml b/car-wasm/Cargo.toml
+index a3078c4..d476c82 100644
+--- a/car-wasm/Cargo.toml
++++ b/car-wasm/Cargo.toml
+@@ -17,6 +17,7 @@ deepmap2 = { package = "car-parser-deepmap2", path = "../deepmap2", version = "0
+ image = { workspace = true }
+ js-sys = { workspace = true }
+ serde = { version = "1", features = ["derive"] }
++serde_bytes = "=0.11.19"
+ serde-wasm-bindgen = { workspace = true }
+ thiserror = { workspace = true }
+ wasm-bindgen = { workspace = true }
 diff --git a/car-wasm/src/archive.rs b/car-wasm/src/archive.rs
-index 7d6fbfa..d6b2ad7 100644
+index 7d6fbfa..d92bb98 100644
 --- a/car-wasm/src/archive.rs
 +++ b/car-wasm/src/archive.rs
-@@ -120,6 +120,12 @@ impl ArchiveRuntime {
+@@ -10,6 +10,7 @@ use crate::error::{WasmError, WasmResult};
+ use crate::types::{
+     DiagnosticIssueSummary, DiagnosticsSummary, DisplayPayload, DownloadPayload, DownloadStrategy,
+     EntryInfo, EntryKind, EntryListItem, PreviewStrategy, SelectionReason, ThumbnailPayload,
++    ThinningAttribute, ThinningEntry,
+ };
+ 
+ const DEFAULT_THUMBNAIL_DIMENSION: u32 = 256;
+@@ -120,6 +121,12 @@ impl ArchiveRuntime {
                          width: item.width(),
                          height: item.height(),
                          scale: item.scale(),
@@ -15,19 +35,140 @@ index 7d6fbfa..d6b2ad7 100644
                          logical_layout: layout_name(item.layout()).to_string(),
                          resolved_encoding: encoding_name(resolved.payload.encoding()).to_string(),
                          entry_kind: classification.entry_kind,
-diff --git a/car-wasm/Cargo.toml b/car-wasm/Cargo.toml
-index 8132966..9400dc4 100644
---- a/car-wasm/Cargo.toml
-+++ b/car-wasm/Cargo.toml
-@@ -16,5 +16,6 @@ image = { workspace = true }
- js-sys = { workspace = true }
- serde = { version = "1", features = ["derive"] }
-+serde_bytes = "=0.11.19"
- serde-wasm-bindgen = { workspace = true }
- thiserror = { workspace = true }
- wasm-bindgen = { workspace = true }
+@@ -215,6 +222,33 @@ impl ArchiveRuntime {
+             .collect()
+     }
+ 
++    pub fn list_thinning_entries(&self) -> Vec<ThinningEntry> {
++        self.car
++            .named_facets()
++            .into_iter()
++            .flat_map(|(facet_name, facet)| {
++                self.car
++                    .items_for_facet(facet)
++                    .into_iter()
++                    .flatten()
++                    .map(move |item| ThinningEntry {
++                        facet_name: facet_name.to_string(),
++                        rendition_name: item.name().to_string(),
++                        size_on_disk: item.header().size_on_disk(),
++                        logical_layout: layout_name(item.layout()).to_string(),
++                        attributes: item
++                            .attributes()
++                            .iter()
++                            .map(|attribute| ThinningAttribute {
++                                tag: attribute_type_tag(attribute.name),
++                                value: attribute.val,
++                            })
++                            .collect(),
++                    })
++            })
++            .collect()
++    }
++
+     pub fn get_entry_info(&self, id: &str) -> WasmResult<EntryInfo> {
+         Ok(self.entry(id)?.info.clone())
+     }
+@@ -413,6 +447,42 @@ impl ArchiveRuntime {
+     }
+ }
+ 
++fn attribute_type_tag(attribute_type: car::rendition::AttributeType) -> u16 {
++    use car::rendition::AttributeType;
++
++    match attribute_type {
++        AttributeType::ThemeLook => 0,
++        AttributeType::Element => 1,
++        AttributeType::Part => 2,
++        AttributeType::Size => 3,
++        AttributeType::Direction => 4,
++        AttributeType::Placeholder => 5,
++        AttributeType::Value => 6,
++        AttributeType::ThemeAppearance => 7,
++        AttributeType::Dimension1 => 8,
++        AttributeType::Dimension2 => 9,
++        AttributeType::State => 10,
++        AttributeType::Layer => 11,
++        AttributeType::Scale => 12,
++        AttributeType::Localization => 13,
++        AttributeType::PresentationState => 14,
++        AttributeType::Idiom => 15,
++        AttributeType::Subtype => 16,
++        AttributeType::Identifier => 17,
++        AttributeType::PreviousValue => 18,
++        AttributeType::PreviousState => 19,
++        AttributeType::HorizontalSizeClass => 20,
++        AttributeType::VerticalSizeClass => 21,
++        AttributeType::MemoryLevelClass => 22,
++        AttributeType::GraphicsFeatureSetClass => 23,
++        AttributeType::DisplayGamut => 24,
++        AttributeType::DeploymentTarget => 25,
++        AttributeType::GlyphWeight => 26,
++        AttributeType::GlyphSize => 27,
++        AttributeType::Unknown { tag } => tag,
++    }
++}
++
+ fn resolve_visual<'a>(car: &'a Car, logical: &'a CSIItem) -> Option<ResolvedVisual<'a>> {
+     match logical.layout() {
+         LayoutType::InternalReference => {
+@@ -785,6 +855,16 @@ mod tests {
+         ArchiveRuntime::load(bytes).expect("load Assets.car")
+     }
+ 
++    #[test]
++    fn thinning_inventory_includes_every_parsed_rendition() {
++        let archive = smoke_fixture_archive();
++        let entries = archive.list_thinning_entries();
++
++        assert_eq!(entries.len(), archive.diagnostics_summary().entries);
++        assert!(entries.iter().all(|entry| entry.size_on_disk > 0));
++        assert!(entries.iter().all(|entry| !entry.attributes.is_empty()));
++    }
++
+     fn full_fixture_archive() -> Option<ArchiveRuntime> {
+         if !matches!(
+             std::env::var("CAR_TEST_FULL").as_deref(),
+@@ -824,6 +904,10 @@ mod tests {
+                 width,
+                 height,
+                 scale,
++                size_on_disk: 1,
++                payload_size: 1,
++                serialized_overhead: 0,
++                opaque: false,
+                 logical_layout: "one-part-scale".to_string(),
+                 resolved_encoding: resolved_encoding.to_string(),
+                 entry_kind: EntryKind::Image,
+diff --git a/car-wasm/src/lib.rs b/car-wasm/src/lib.rs
+index 6c0ce1a..0fe4b39 100644
+--- a/car-wasm/src/lib.rs
++++ b/car-wasm/src/lib.rs
+@@ -10,5 +10,5 @@ pub use crate::runtime::WasmArchive;
+ pub use crate::types::{
+     DiagnosticIssueSummary, DiagnosticsSummary, DisplayPayload, DownloadPayload, DownloadStrategy,
+     EntryInfo, EntryKind, EntryListItem, ImageInfo, ImageListItem, PreviewStrategy,
+-    SelectionReason, ThumbnailPayload,
++    SelectionReason, ThumbnailPayload, ThinningAttribute, ThinningEntry,
+ };
+diff --git a/car-wasm/src/runtime.rs b/car-wasm/src/runtime.rs
+index e5c95ed..7771605 100644
+--- a/car-wasm/src/runtime.rs
++++ b/car-wasm/src/runtime.rs
+@@ -48,6 +48,11 @@ impl WasmArchive {
+         into_js(&self.inner.list_image_summaries())
+     }
+ 
++    #[wasm_bindgen(js_name = listThinningEntries)]
++    pub fn list_thinning_entries(&self) -> Result<JsValue, JsValue> {
++        into_js(&self.inner.list_thinning_entries())
++    }
++
+     #[wasm_bindgen(js_name = getEntryInfo)]
+     pub fn get_entry_info(&self, id: &str) -> Result<JsValue, JsValue> {
+         let info = self.inner.get_entry_info(id).map_err(JsValue::from)?;
 diff --git a/car-wasm/src/types.rs b/car-wasm/src/types.rs
-index ca6624d..bc0bd92 100644
+index ca6624d..b97ddd8 100644
 --- a/car-wasm/src/types.rs
 +++ b/car-wasm/src/types.rs
 @@ -45,6 +45,10 @@ pub struct EntryInfo {
@@ -52,28 +193,53 @@ index ca6624d..bc0bd92 100644
      pub resolved_encoding: String,
      pub entry_kind: EntryKind,
      pub preview_strategy: PreviewStrategy,
-@@ -95,5 +103,6 @@ pub enum DisplayPayload {
+@@ -85,6 +93,21 @@ pub struct EntryListItem {
+ 
+ pub type ImageListItem = EntryListItem;
+ 
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++pub struct ThinningAttribute {
++    pub tag: u16,
++    pub value: u16,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++pub struct ThinningEntry {
++    pub facet_name: String,
++    pub rendition_name: String,
++    pub size_on_disk: usize,
++    pub logical_layout: String,
++    pub attributes: Vec<ThinningAttribute>,
++}
++
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ #[serde(tag = "preview_strategy", rename_all = "kebab-case")]
+ pub enum DisplayPayload {
+@@ -94,6 +117,7 @@ pub enum DisplayPayload {
+         suggested_file_name: String,
          preserves_original_format: bool,
          selection_reason: SelectionReason,
 +        #[serde(with = "serde_bytes")]
          bytes: Vec<u8>,
      },
      CanvasRgba {
-@@ -104,5 +113,6 @@ pub enum DisplayPayload {
+@@ -103,6 +127,7 @@ pub enum DisplayPayload {
+         suggested_file_name: String,
          preserves_original_format: bool,
          selection_reason: SelectionReason,
 +        #[serde(with = "serde_bytes")]
          rgba: Vec<u8>,
      },
      Document {
-@@ -112,5 +122,6 @@ pub enum DisplayPayload {
+@@ -111,6 +136,7 @@ pub enum DisplayPayload {
+         suggested_file_name: String,
          preserves_original_format: bool,
          selection_reason: SelectionReason,
 +        #[serde(with = "serde_bytes")]
          bytes: Vec<u8>,
      },
      DownloadOnly {
-@@ -129,6 +140,7 @@ pub enum DisplayPayload {
+@@ -129,6 +155,7 @@ pub enum DisplayPayload {
  
  #[derive(Debug, Clone, Serialize, Deserialize)]
  pub struct DownloadPayload {
@@ -81,7 +247,7 @@ index ca6624d..bc0bd92 100644
      pub bytes: Vec<u8>,
      pub mime_type: String,
      pub suggested_extension: String,
-@@ -161,7 +173,11 @@ pub struct DiagnosticIssueSummary {
+@@ -161,7 +188,11 @@ pub struct DiagnosticIssueSummary {
  #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
  #[serde(tag = "preview_strategy", rename_all = "kebab-case")]
  pub enum ThumbnailPayload {
@@ -94,7 +260,7 @@ index ca6624d..bc0bd92 100644
      DownloadOnly,
  }
  
-@@ -175,6 +191,10 @@ impl EntryInfo {
+@@ -175,6 +206,10 @@ impl EntryInfo {
              width: self.width,
              height: self.height,
              scale: self.scale,

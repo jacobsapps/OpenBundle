@@ -10,6 +10,7 @@ from openbundle.analyzer import (
     BundleAnalyzer,
     Record,
     _architecture_inventory,
+    _apply_macho_delivery_estimate,
     _binary_inventory,
     _collect_capability_declarations,
     _component_duplicate_groups,
@@ -23,6 +24,32 @@ from tests.helpers import make_app
 
 
 class AnalyzerTests(unittest.TestCase):
+    def test_latest_iphone_delivery_selects_arm64e_from_fat_binary(self) -> None:
+        record = Record(
+            relative_path="Frameworks/Example.framework/Example",
+            absolute_path=Path("/temporary/Example"),
+            size=1_100,
+            compressed_size=550,
+            allocated_size=4_096,
+            category="binary",
+            sha256="1" * 64,
+            macho={
+                "is_fat": True,
+                "architectures": [
+                    {"architecture": "x86_64", "size": 500},
+                    {"architecture": "arm64", "size": 400},
+                    {"architecture": "arm64e", "size": 300},
+                ],
+            },
+        )
+
+        self.assertTrue(_apply_macho_delivery_estimate(record))
+        self.assertEqual(record.delivered_install_size, 300)
+        self.assertEqual(record.delivered_download_size, 150)
+        self.assertEqual(
+            record.metadata["deliveryEstimate"]["architecture"], "arm64e"
+        )
+
     def test_only_material_measured_recommendations_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1422,6 +1449,56 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("worth testing", html)
             self.assertIn("data-linking-review", html)
             self.assertNotIn("review static / mergeable", html)
+
+    def test_delivery_metrics_use_latest_iphone_catalog_estimate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = make_app(Path(directory))
+            catalog = app / "Assets.car"
+            catalog.write_bytes(bytes(range(250)) * 4)
+            platform = BrowserAnalysisPlatform(
+                catalog_results={
+                    "Assets.car": {
+                        "children": [],
+                        "renditions": [],
+                        "diagnostics": {
+                            "entries": 4,
+                            "deliveryEstimate": {
+                                "complete": True,
+                                "estimatedSize": 400,
+                                "entryCount": 4,
+                                "selectedEntryCount": 1,
+                            },
+                        },
+                    }
+                },
+                catalog_analysis_available=True,
+            )
+
+            report = BundleAnalyzer(platform=platform).analyze(app)
+
+            self.assertEqual(
+                report["metrics"]["installSize"],
+                report["metrics"]["logicalSize"] - 600,
+            )
+            self.assertLess(
+                report["metrics"]["downloadSize"],
+                report["metrics"]["compressedSize"],
+            )
+            self.assertEqual(
+                report["metrics"]["delivery"]["assetCatalogEstimateCount"],
+                1,
+            )
+            self.assertEqual(
+                report["tree"]["installSize"],
+                report["metrics"]["installSize"],
+            )
+            catalog_node = next(
+                node
+                for node in report["tree"]["children"]
+                if node["name"] == "Assets.car"
+            )
+            self.assertEqual(catalog_node["size"], 1_000)
+            self.assertEqual(catalog_node["installSize"], 400)
 
     def test_browser_reports_strip_and_exports_from_portable_macho_data(self) -> None:
         record = Record(

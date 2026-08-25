@@ -23,6 +23,21 @@ The report shows recommendations of 100 KB or more, ordered by saving. Each
 recommendation expands into its measured files, binaries, renditions, or scale
 sets.
 
+## Download and install size
+
+The headline **Download** and **Install** values model the bundle delivered to
+a current 3x P3 iPhone, rather than reporting the universal IPA and `.app`
+sizes under App Store labels. OpenBundle selects device-compatible CoreUI
+renditions, retains runtime fallbacks, selects the arm64/arm64e slice from fat
+Mach-O files, and recomputes the parent hierarchy from those delivered bytes.
+
+Install is the uncompressed thinned app payload. Download is the corresponding
+compressed payload plus ZIP container overhead. CoreUI metadata and compressed
+member sizes are estimated because the browser cannot run Apple's App Store
+processing pipeline. The report keeps the raw universal, compressed-member,
+and source-artifact sizes in JSON for auditability and marks the headline
+values as a latest-iPhone estimate.
+
 ## Report views
 
 - Bundle map and size-ranked recommendations

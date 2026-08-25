@@ -157,6 +157,16 @@ export class WasmArchive {
         }
         return takeFromExternrefTable0(ret[0]);
     }
+    /**
+     * @returns {any}
+     */
+    listThinningEntries() {
+        const ret = wasm.wasmarchive_listThinningEntries(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
 }
 if (Symbol.dispose) WasmArchive.prototype[Symbol.dispose] = WasmArchive.prototype.free;
 function __wbg_get_imports() {

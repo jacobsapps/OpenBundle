@@ -11,6 +11,26 @@ const MAX_DECODE_DIMENSION = 8192;
 const MAX_HEADER_SCAN_BYTES = 1024 * 1024;
 const encoder = new TextEncoder();
 
+const THINNING_ATTRIBUTE = Object.freeze({
+  scale: 12,
+  idiom: 15,
+  subtype: 16,
+  memoryClass: 22,
+  graphicsClass: 23,
+  displayGamut: 24,
+  deploymentTarget: 25,
+});
+const THINNING_ATTRIBUTE_TAGS = new Set(Object.values(THINNING_ATTRIBUTE));
+const LATEST_IPHONE_TRAITS = Object.freeze({
+  idiom: 1,
+  hostedIdiom: 4,
+  scale: 3,
+  subtype: 2622,
+  memoryClass: 12,
+  graphicsClass: 11,
+  displayGamut: 1,
+});
+
 let carRuntimePromise;
 
 export function initializeCarRuntime() {
@@ -26,6 +46,231 @@ function positiveInteger(value) {
 function nonNegativeInteger(value) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : -1;
+}
+
+function thinningAttributes(entry) {
+  const attributes = new Map();
+  for (const item of Array.from(entry?.attributes || [])) {
+    const tag = nonNegativeInteger(item?.tag);
+    const value = nonNegativeInteger(item?.value);
+    if (tag < 0 || value < 0 || attributes.has(tag)) return null;
+    attributes.set(tag, value);
+  }
+  return attributes;
+}
+
+function thinningGroupKey(entry, attributes) {
+  const stable = Array.from(attributes.entries())
+    .filter(([tag]) => !THINNING_ATTRIBUTE_TAGS.has(tag))
+    .sort((left, right) => left[0] - right[0]);
+  return `${String(entry.facet_name || "")}\u0000${stable
+    .map(([tag, value]) => `${tag}:${value}`)
+    .join(",")}`;
+}
+
+function compareRanks(left, right) {
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = Number(left[index] || 0) - Number(right[index] || 0);
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+function targetValueRank(value, target) {
+  const normalized = nonNegativeInteger(value);
+  if (normalized === target) return [0, 0];
+  if (normalized > 0 && normalized < target) return [1, -normalized];
+  if (normalized === 0) return [2, 0];
+  return [3, normalized];
+}
+
+function thinningRank(attributes) {
+  const scale = scalePreference(attributes.get(THINNING_ATTRIBUTE.scale));
+  const gamut = attributes.get(THINNING_ATTRIBUTE.displayGamut) || 0;
+  const gamutRank = gamut === LATEST_IPHONE_TRAITS.displayGamut
+    ? [0, 0]
+    : gamut === 0
+      ? [1, 0]
+      : [2, gamut];
+  return [
+    ...scale,
+    ...gamutRank,
+    ...targetValueRank(
+      attributes.get(THINNING_ATTRIBUTE.subtype) || 0,
+      LATEST_IPHONE_TRAITS.subtype,
+    ),
+    ...targetValueRank(
+      attributes.get(THINNING_ATTRIBUTE.memoryClass) || 0,
+      LATEST_IPHONE_TRAITS.memoryClass,
+    ),
+    ...targetValueRank(
+      attributes.get(THINNING_ATTRIBUTE.graphicsClass) || 0,
+      LATEST_IPHONE_TRAITS.graphicsClass,
+    ),
+    // Deployment values describe runtime-compatible fallbacks rather than a
+    // named device. A current handset takes the newest compiled variant.
+    -(attributes.get(THINNING_ATTRIBUTE.deploymentTarget) || 0),
+  ];
+}
+
+function selectRankedEntries(entries) {
+  if (!entries.length) return [];
+  const bestRank = entries.reduce((best, entry) => {
+    const rank = thinningRank(entry.attributeMap);
+    return !best || compareRanks(rank, best) < 0 ? rank : best;
+  }, null);
+  return entries.filter(
+    (entry) => compareRanks(thinningRank(entry.attributeMap), bestRank) === 0,
+  );
+}
+
+function idiomSets(entries) {
+  const byIdiom = new Map();
+  for (const entry of entries) {
+    const idiom = entry.attributeMap.get(THINNING_ATTRIBUTE.idiom) || 0;
+    if (!byIdiom.has(idiom)) byIdiom.set(idiom, []);
+    byIdiom.get(idiom).push(entry);
+  }
+
+  const selected = [];
+  if (byIdiom.has(LATEST_IPHONE_TRAITS.idiom)) {
+    selected.push(byIdiom.get(LATEST_IPHONE_TRAITS.idiom));
+  } else if (byIdiom.has(0)) {
+    selected.push(byIdiom.get(0));
+  }
+  if (byIdiom.has(LATEST_IPHONE_TRAITS.hostedIdiom)) {
+    selected.push(byIdiom.get(LATEST_IPHONE_TRAITS.hostedIdiom));
+  }
+  // Unknown key formats should not make the delivery estimate silently lose a
+  // whole logical asset. Keep the group when no known handset idiom applies.
+  if (!selected.length) selected.push(entries);
+  return selected;
+}
+
+/**
+ * Estimate the CoreUI bytes retained for a representative current iPhone.
+ *
+ * CoreUI's BOM metadata is not independently serializable in the browser. We
+ * select the same rendition keys as Xcode and scale the catalog metadata by
+ * the retained entry count. Any malformed or incomplete inventory fails
+ * closed to the universal catalog size.
+ */
+export function estimateLatestIPhoneCatalog(entries, catalogSize) {
+  const universalSize = positiveInteger(catalogSize);
+  const normalized = [];
+  for (const rawEntry of Array.from(entries || [])) {
+    const size = positiveInteger(rawEntry?.size_on_disk);
+    const attributeMap = thinningAttributes(rawEntry);
+    if (!size || !attributeMap) {
+      return {
+        complete: false,
+        estimatedSize: universalSize,
+        universalSize,
+        entryCount: 0,
+        selectedEntryCount: 0,
+      };
+    }
+    normalized.push({ ...rawEntry, size, attributeMap });
+  }
+  if (!universalSize || !normalized.length) {
+    return {
+      complete: false,
+      estimatedSize: universalSize,
+      universalSize,
+      entryCount: normalized.length,
+      selectedEntryCount: normalized.length,
+    };
+  }
+
+  const universalRenditionSize = normalized.reduce(
+    (total, entry) => total + entry.size,
+    0,
+  );
+  if (
+    !Number.isSafeInteger(universalRenditionSize) ||
+    universalRenditionSize <= 0 ||
+    universalRenditionSize > universalSize
+  ) {
+    return {
+      complete: false,
+      estimatedSize: universalSize,
+      universalSize,
+      entryCount: normalized.length,
+      selectedEntryCount: normalized.length,
+    };
+  }
+
+  const vectorFacets = new Set(
+    normalized
+      .filter(
+        (entry) =>
+          entry.logical_layout === "vector" ||
+          String(entry.rendition_name || "").toLowerCase().endsWith(".svg"),
+      )
+      .map((entry) => String(entry.facet_name || "")),
+  );
+  const groups = new Map();
+  for (const entry of normalized) {
+    const key = thinningGroupKey(entry, entry.attributeMap);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
+  }
+
+  const selected = [];
+  for (const group of groups.values()) {
+    for (const handsetEntries of idiomSets(group)) {
+      const scales = new Set(
+        handsetEntries.map(
+          (entry) => entry.attributeMap.get(THINNING_ATTRIBUTE.scale) || 0,
+        ),
+      );
+      let chosen = selectRankedEntries(handsetEntries);
+      if (scales.size === 1) {
+        // A lone scale often carries gamut/deployment runtime fallbacks. Xcode
+        // retains these while removing device and scale alternatives.
+        chosen = handsetEntries;
+      } else if (
+        vectorFacets.has(String(handsetEntries[0]?.facet_name || ""))
+      ) {
+        // Vector catalogs keep the source 1x reference alongside the 3x device
+        // reference; the 2x reference is still thinned.
+        for (const entry of handsetEntries) {
+          if (
+            (entry.attributeMap.get(THINNING_ATTRIBUTE.scale) || 0) === 1 &&
+            !chosen.includes(entry)
+          ) {
+            chosen.push(entry);
+          }
+        }
+      }
+      selected.push(...chosen);
+    }
+  }
+
+  const selectedRenditionSize = selected.reduce(
+    (total, entry) => total + entry.size,
+    0,
+  );
+  const universalMetadataSize = universalSize - universalRenditionSize;
+  const metadataSize = Math.round(
+    (universalMetadataSize * selected.length) / normalized.length,
+  );
+  const estimatedSize = Math.min(
+    universalSize,
+    selectedRenditionSize + metadataSize,
+  );
+  return {
+    complete: true,
+    target: "latest-iphone",
+    estimatedSize,
+    universalSize,
+    universalRenditionSize,
+    selectedRenditionSize,
+    metadataSize,
+    entryCount: normalized.length,
+    selectedEntryCount: selected.length,
+  };
 }
 
 function scalePreference(scale) {
@@ -481,6 +726,25 @@ export async function analyzeAssetCatalog(
 
   try {
     const diagnostics = archive.diagnosticsSummary();
+    const thinningEntries = archive.listThinningEntries();
+    let deliveryEstimate = estimateLatestIPhoneCatalog(
+      thinningEntries,
+      bytes.byteLength,
+    );
+    const diagnosticEntryCount = positiveInteger(diagnostics.entries);
+    if (
+      deliveryEstimate.complete &&
+      diagnosticEntryCount &&
+      deliveryEstimate.entryCount !== diagnosticEntryCount
+    ) {
+      deliveryEstimate = {
+        complete: false,
+        estimatedSize: bytes.byteLength,
+        universalSize: bytes.byteLength,
+        entryCount: deliveryEstimate.entryCount,
+        selectedEntryCount: deliveryEstimate.entryCount,
+      };
+    }
     const entries = archive
       .listEntries()
       .slice()
@@ -728,6 +992,7 @@ export async function analyzeAssetCatalog(
         conversionCandidateCount,
         conversionMeasuredCount,
         previewCount,
+        deliveryEstimate,
       },
     };
   } finally {

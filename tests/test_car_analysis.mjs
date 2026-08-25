@@ -3,10 +3,34 @@ import test from "node:test";
 
 import {
   encodedImageDimensions,
+  estimateLatestIPhoneCatalog,
   pixelsAreSafe,
   selectPhysicalConversionRendition,
   serializedConversionEstimate,
 } from "../web/car-analysis.mjs";
+
+function thinningEntry(
+  name,
+  size,
+  traits,
+  { layout = "one-part-scale", extension = ".png", extra = [] } = {},
+) {
+  return {
+    facet_name: name,
+    rendition_name: `${name}${extension}`,
+    size_on_disk: size,
+    logical_layout: layout,
+    attributes: [
+      { tag: 17, value: 100 },
+      { tag: 1, value: 85 },
+      ...extra.map(([tag, value]) => ({ tag, value })),
+      ...Object.entries(traits).map(([tag, value]) => ({
+        tag: Number(tag),
+        value,
+      })),
+    ],
+  };
+}
 
 function pngHeader(width, height, { cgbi = false } = {}) {
   const prefix = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -185,5 +209,86 @@ test("conversion selection ignores non-images, references, and empty payloads", 
       rendition("empty", 3, { size: 0 }),
     ]),
     null,
+  );
+});
+
+test("latest-iPhone catalog estimate selects 3x P3 rendition bytes", () => {
+  const entries = [
+    thinningEntry("Artwork", 100, { 12: 2, 15: 0, 24: 0 }),
+    thinningEntry("Artwork", 200, { 12: 2, 15: 0, 24: 1 }),
+    thinningEntry("Artwork", 300, { 12: 3, 15: 0, 24: 0 }),
+    thinningEntry("Artwork", 400, { 12: 3, 15: 0, 24: 1 }),
+  ];
+
+  assert.deepEqual(estimateLatestIPhoneCatalog(entries, 1_500), {
+    complete: true,
+    target: "latest-iphone",
+    estimatedSize: 525,
+    universalSize: 1_500,
+    universalRenditionSize: 1_000,
+    selectedRenditionSize: 400,
+    metadataSize: 125,
+    entryCount: 4,
+    selectedEntryCount: 1,
+  });
+});
+
+test("latest-iPhone catalog estimate drops tablet idioms but keeps lone-scale fallbacks", () => {
+  const entries = [
+    thinningEntry("AppMark", 200, { 12: 1, 15: 1, 24: 0 }),
+    thinningEntry("AppMark", 180, { 12: 1, 15: 1, 24: 1 }),
+    thinningEntry("AppMark", 220, { 12: 1, 15: 2, 24: 0 }),
+    thinningEntry("AppMark", 210, { 12: 1, 15: 2, 24: 1 }),
+  ];
+
+  const estimate = estimateLatestIPhoneCatalog(entries, 1_210);
+  assert.equal(estimate.selectedRenditionSize, 380);
+  assert.equal(estimate.selectedEntryCount, 2);
+  assert.equal(estimate.estimatedSize, 580);
+});
+
+test("latest-iPhone catalog estimate retains vector source references", () => {
+  const entries = [
+    thinningEntry("VectorMark", 250, { 12: 1, 15: 0 }, {
+      layout: "vector",
+      extension: ".svg",
+      extra: [[2, 42]],
+    }),
+    thinningEntry("VectorMark", 20, { 12: 1, 15: 0 }, {
+      layout: "internal-reference",
+      extension: ".svg",
+      extra: [[2, 181]],
+    }),
+    thinningEntry("VectorMark", 20, { 12: 2, 15: 0 }, {
+      layout: "internal-reference",
+      extension: ".svg",
+      extra: [[2, 181]],
+    }),
+    thinningEntry("VectorMark", 20, { 12: 3, 15: 0 }, {
+      layout: "internal-reference",
+      extension: ".svg",
+      extra: [[2, 181]],
+    }),
+  ];
+
+  const estimate = estimateLatestIPhoneCatalog(entries, 510);
+  assert.equal(estimate.selectedRenditionSize, 290);
+  assert.equal(estimate.selectedEntryCount, 3);
+  assert.equal(estimate.estimatedSize, 440);
+});
+
+test("latest-iPhone catalog estimate fails closed on incomplete entries", () => {
+  assert.deepEqual(
+    estimateLatestIPhoneCatalog(
+      [{ facet_name: "Broken", size_on_disk: 0, attributes: [] }],
+      900,
+    ),
+    {
+      complete: false,
+      estimatedSize: 900,
+      universalSize: 900,
+      entryCount: 0,
+      selectedEntryCount: 0,
+    },
   );
 });

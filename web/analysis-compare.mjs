@@ -4,7 +4,15 @@ function size(value) {
 }
 
 function downloadSize(report) {
-  return size(report.metrics?.artifactSize || report.metrics?.compressedSize);
+  return size(
+    report.metrics?.downloadSize ??
+      report.metrics?.artifactSize ??
+      report.metrics?.compressedSize,
+  );
+}
+
+function installSize(report) {
+  return size(report.metrics?.installSize ?? report.metrics?.logicalSize);
 }
 
 function metric(before, after) {
@@ -38,8 +46,8 @@ function entry(node) {
     name: String(node.name || node.path || "Unnamed"),
     path: String(node.path || ""),
     kind: componentKind(node),
-    size: size(node.size),
-    compressedSize: size(node.compressedSize),
+    size: size(node.installSize ?? node.size),
+    compressedSize: size(node.downloadSize ?? node.compressedSize),
   };
 }
 
@@ -499,12 +507,15 @@ export function compareReports(beforeReport, afterReport) {
     ? architectureTargets(afterReport)
     : collectBundles(afterReport, [".appex", ".app", ".xpc"]);
   return {
+    deliveryMetricsAvailable: Boolean(
+      beforeReport.metrics?.delivery?.kind ===
+        "latest-iphone-thinning-estimate" &&
+        afterReport.metrics?.delivery?.kind ===
+          "latest-iphone-thinning-estimate",
+    ),
     metrics: {
       download: metric(downloadSize(beforeReport), downloadSize(afterReport)),
-      unpacked: metric(
-        size(beforeReport.metrics?.logicalSize),
-        size(afterReport.metrics?.logicalSize),
-      ),
+      install: metric(installSize(beforeReport), installSize(afterReport)),
     },
     components: diffEntries(
       collectComponents(beforeReport),

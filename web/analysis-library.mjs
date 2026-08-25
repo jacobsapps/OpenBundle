@@ -149,6 +149,8 @@ function normalizeTree(root) {
     for (const key of ["size", "compressedSize", "allocatedSize"]) {
       node[key] = finiteSize(node[key]);
     }
+    node.installSize = finiteSize(node.installSize, node.size);
+    node.downloadSize = finiteSize(node.downloadSize, node.compressedSize);
     node.children = Array.isArray(node.children) ? node.children : [];
     node.metadata =
       node.metadata && typeof node.metadata === "object" && !Array.isArray(node.metadata)
@@ -351,6 +353,14 @@ export function validateAndNormalizeReport(input) {
     input.metrics.artifactSize,
     input.metrics.compressedSize,
   );
+  input.metrics.installSize = finiteSize(
+    input.metrics.installSize,
+    input.metrics.logicalSize,
+  );
+  input.metrics.downloadSize = finiteSize(
+    input.metrics.downloadSize,
+    input.metrics.artifactSize,
+  );
   input.categories = Array.isArray(input.categories)
     ? input.categories.filter((item) => item && typeof item === "object")
     : [];
@@ -421,6 +431,8 @@ function metadataFor(report, options, existing = {}) {
     report.app.artifactName,
     `${report.app.name}.ipa`,
   );
+  const hasDeliveryMetrics =
+    report.metrics.delivery?.kind === "latest-iphone-thinning-estimate";
   return {
     librarySchemaVersion: LIBRARY_SCHEMA_VERSION,
     id: options.id || existing.id || randomID(),
@@ -436,10 +448,21 @@ function metadataFor(report, options, existing = {}) {
     generatedAt: boundedString(report.generatedAt, "", 256),
     modifiedAt: boundedString(report.app.modifiedAt, "", 256),
     downloadSize: finiteSize(
-      report.metrics.artifactSize,
-      finiteSize(report.metrics.compressedSize),
+      report.metrics.downloadSize,
+      finiteSize(
+        report.metrics.artifactSize,
+        finiteSize(report.metrics.compressedSize),
+      ),
     ),
-    unpackedSize: finiteSize(report.metrics.logicalSize),
+    ...(hasDeliveryMetrics
+      ? {
+          installSize: finiteSize(
+            report.metrics.installSize,
+            finiteSize(report.metrics.logicalSize),
+          ),
+          deliveryKind: "latest-iphone-thinning-estimate",
+        }
+      : { unpackedSize: finiteSize(report.metrics.logicalSize) }),
     schemaVersion: Number(report.schemaVersion) || 1,
   };
 }
