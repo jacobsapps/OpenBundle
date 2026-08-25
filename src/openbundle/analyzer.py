@@ -33,6 +33,8 @@ COREML_SUFFIXES = {".mlmodel", ".mlmodelc", ".mlpackage"}
 INTERFACE_SUFFIXES = {".nib", ".storyboardc"}
 LOCALIZATION_SUFFIXES = {".strings", ".stringsdict", ".xcstrings"}
 MIN_RECOMMENDATION_SAVINGS = 100_000
+LARGE_IMAGE_REVIEW_BYTES = 1_000_000
+LARGE_IMAGE_REVIEW_EDGE = 3_000
 MAX_INSIGHT_ITEMS = 500
 MAX_INSIGHT_PATHS = 1_000
 MIN_LINKING_REVIEW_BYTES = 2_000_000
@@ -2584,6 +2586,7 @@ def _insight(
     paths: list[str] | None = None,
     items: list[dict[str, Any]] | None = None,
     category: str = "other",
+    review_only: bool = False,
 ) -> dict[str, Any]:
     all_paths = list(paths or [])
     all_items = list(items or [])
@@ -2603,6 +2606,7 @@ def _insight(
         "itemCount": len(all_items),
         "itemsOmitted": max(0, len(all_items) - MAX_INSIGHT_ITEMS),
         "category": category,
+        "reviewOnly": review_only,
     }
 
 
@@ -2615,10 +2619,13 @@ def _mark(records: Iterable[Record], insight_id: str) -> None:
 def _rank_recommendations(
     insights: Iterable[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Keep only measured, material opportunities and rank them by savings."""
+    """Keep material savings plus explicitly curated review-only checks."""
 
     qualifying: list[dict[str, Any]] = []
     for insight in insights:
+        if insight.get("reviewOnly") is True:
+            qualifying.append(insight)
+            continue
         savings = insight.get("savings")
         if (
             isinstance(savings, bool)
@@ -2630,7 +2637,8 @@ def _rank_recommendations(
         qualifying.append(insight)
     qualifying.sort(
         key=lambda item: (
-            -float(item["savings"]),
+            item.get("reviewOnly") is True,
+            -float(item.get("savings") or 0),
             str(item.get("title") or item.get("id") or ""),
         )
     )
@@ -3706,25 +3714,37 @@ class BundleAnalyzer:
     def _asset_catalog_insights(
         self, records: list[Record], insights: list[dict[str, Any]]
     ) -> None:
-        loose_scaled: dict[str, list[tuple[int, Record]]] = {}
+        loose_scaled: dict[str, dict[str, Any]] = {}
         for record in records:
             if record.category != "image" or ".car::" in record.relative_path:
                 continue
             match = re.match(
-                r"(?i)(.*?)@([123])x(~(?:iphone|ipad))?(\.[^.]+)$",
+                r"(?i)\A(.*?)(?:@([123])x)?(~(?:iphone|ipad))?(\.[^./]+)\Z",
                 record.relative_path,
             )
-            if match:
-                key = f"{match.group(1)}{match.group(3) or ''}{match.group(4)}"
-                loose_scaled.setdefault(key, []).append((int(match.group(2)), record))
+            if not match:
+                continue
+            key = f"{match.group(1)}{match.group(3) or ''}{match.group(4)}"
+            bucket = loose_scaled.setdefault(
+                key,
+                {"path": key, "variants": [], "hasExplicitScale": False},
+            )
+            explicit_scale = match.group(2) is not None
+            bucket["hasExplicitScale"] = bool(
+                bucket["hasExplicitScale"] or explicit_scale
+            )
+            bucket["variants"].append(
+                (int(match.group(2) or 1), record, explicit_scale)
+            )
         scale_groups = [
-            (key, group)
-            for key, group in loose_scaled.items()
-            if len({scale for scale, _ in group}) > 1
+            (str(bucket["path"]), list(bucket["variants"]))
+            for bucket in loose_scaled.values()
+            if bucket["hasExplicitScale"]
+            and len({scale for scale, _, _ in bucket["variants"]}) > 1
         ]
         if scale_groups:
             candidates = [
-                record for _, group in scale_groups for _, record in group
+                record for _, group in scale_groups for _, record, _ in group
             ]
             items: list[dict[str, Any]] = []
             for key, group in scale_groups:
@@ -3732,24 +3752,61 @@ class BundleAnalyzer:
                     group,
                     key=lambda item: (item[0], item[1].relative_path.casefold()),
                 )
-                total_size = sum(record.size for _, record in variants)
-                retained_size = max(record.size for _, record in variants)
+                total_size = sum(record.size for _, record, _ in variants)
+                by_scale: dict[int, list[Record]] = {}
+                for scale, record, _ in variants:
+                    by_scale.setdefault(scale, []).append(record)
+
+                def retained_for(target_scale: int) -> tuple[int, int]:
+                    selected_scale = min(
+                        by_scale,
+                        key=lambda scale: (abs(scale - target_scale), -scale),
+                    )
+                    return selected_scale, sum(
+                        record.size for record in by_scale[selected_scale]
+                    )
+
+                latest_scale, latest_retained_size = retained_for(3)
+                two_x_scale, two_x_retained_size = retained_for(2)
+                latest_savings = max(0, total_size - latest_retained_size)
+                two_x_savings = max(0, total_size - two_x_retained_size)
                 items.append(
                     {
                         "name": Path(key).name,
                         "path": key,
                         "kind": "loose image scale set",
                         "size": total_size,
-                        "retainedSize": retained_size,
-                        "savings": total_size - retained_size,
-                        "paths": [record.relative_path for _, record in variants],
+                        "retainedSize": latest_retained_size,
+                        "retainedScale": latest_scale,
+                        "savings": latest_savings,
+                        "twoXSavings": two_x_savings,
+                        "twoXRetainedSize": two_x_retained_size,
+                        "twoXRetainedScale": two_x_scale,
+                        "paths": [
+                            record.relative_path for _, record, _ in variants
+                        ],
                         "variants": [
                             {
                                 "path": record.relative_path,
                                 "scale": scale,
                                 "size": record.size,
+                                "implicitScale": not explicit_scale,
                             }
-                            for scale, record in variants
+                            for scale, record, explicit_scale in variants
+                        ],
+                        "deviceEstimates": [
+                            {
+                                "device": "Latest 3x iPhone",
+                                "retainedScale": latest_scale,
+                                "retainedSize": latest_retained_size,
+                                "savings": latest_savings,
+                            },
+                            {
+                                "device": "2x iPhone",
+                                "retainedScale": two_x_scale,
+                                "retainedSize": two_x_retained_size,
+                                "savings": two_x_savings,
+                            },
                         ],
                     }
                 )
@@ -3762,10 +3819,12 @@ class BundleAnalyzer:
                 _insight(
                     "asset-catalog-scales",
                     f"Enable thinning for {len(scale_groups)} loose image set{'s' if len(scale_groups) != 1 else ''}",
-                    "Loose scale variants cannot use asset-catalog thinning.",
+                    "Loose scale variants cannot be removed per device by asset-catalog thinning.",
                     detail=(
-                        "The estimate keeps the largest file in each set and counts the other "
-                        "scale variants as the minimum per-device opportunity."
+                        "The headline estimate models a latest 3x iPhone. Each row also shows "
+                        "the 2x-device result. An unsuffixed image is treated as 1x only when "
+                        "it has an explicit @2x or @3x sibling; singleton images are not "
+                        "claimed as thinning savings."
                     ),
                     action="Create image sets in an .xcassets catalog and remove the loose copies from bundle resources.",
                     severity="medium",
@@ -4035,8 +4094,51 @@ class BundleAnalyzer:
         candidates.sort(key=lambda record: record.size, reverse=True)
         optimization_items: list[dict[str, Any]] = []
         total_savings = 0
-        high_resolution: list[Record] = []
         optimized_records: list[Record] = []
+        image_review_items: list[dict[str, Any]] = []
+        image_review_records: list[Record] = []
+        reviewed_image_paths: set[str] = set()
+
+        def add_image_review(
+            *,
+            name: str,
+            path: str,
+            asset_path: str,
+            size: int,
+            width: int,
+            height: int,
+            kind: str,
+            record: Record | None = None,
+            entry: dict[str, Any] | None = None,
+        ) -> None:
+            if not asset_path or asset_path in reviewed_image_paths:
+                return
+            if "appicon" in f"{name} {path}".lower():
+                return
+            reasons: list[str] = []
+            if size >= LARGE_IMAGE_REVIEW_BYTES:
+                reasons.append(f"{size:,} stored bytes")
+            if max(width, height) >= LARGE_IMAGE_REVIEW_EDGE:
+                reasons.append(f"{width:,}×{height:,} pixels")
+            if not reasons:
+                return
+            reviewed_image_paths.add(asset_path)
+            item = {
+                "name": name,
+                "path": path,
+                "assetPath": asset_path,
+                "size": size,
+                "dimensions": f"{width}×{height}" if width and height else "Unknown",
+                "reason": " and ".join(reasons),
+                "kind": kind,
+            }
+            image_review_items.append(item)
+            if record is not None and record not in image_review_records:
+                image_review_records.append(record)
+            if entry is not None and "oversized-images" not in entry.setdefault(
+                "insights", []
+            ):
+                entry["insights"].append("oversized-images")
 
         if candidates and self.platform.image_conversion_available:
             _progress(self.progress, "Simulating image compression (largest images first)…")
@@ -4044,11 +4146,29 @@ class BundleAnalyzer:
                 output = Path(directory)
                 for record in candidates[:80]:
                     properties = self.platform.image_properties(record.absolute_path)
+                    thumbnail = properties.get("thumbnailDataURL")
+                    if not (
+                        isinstance(thumbnail, str)
+                        and len(thumbnail) <= 96 * 1024
+                        and re.fullmatch(
+                            r"data:image/(?:png|webp);base64,[A-Za-z0-9+/]+={0,2}",
+                            thumbnail,
+                        )
+                    ):
+                        properties.pop("thumbnailDataURL", None)
                     record.metadata.update(properties)
                     width = int(properties.get("pixelWidth", 0))
                     height = int(properties.get("pixelHeight", 0))
-                    if width >= 3000 or height >= 3000:
-                        high_resolution.append(record)
+                    add_image_review(
+                        name=record.name,
+                        path=record.relative_path,
+                        asset_path=record.relative_path,
+                        size=record.size,
+                        width=width,
+                        height=height,
+                        kind="loose image",
+                        record=record,
+                    )
 
                     attempts: list[tuple[str, int]] = []
                     if _safe_version_at_least(minimum_os, 12):
@@ -4079,7 +4199,9 @@ class BundleAnalyzer:
                     record.metadata["optimizationMethod"] = method
                     optimization_items.append(
                         {
+                            "name": record.name,
                             "path": record.relative_path,
+                            "assetPath": record.relative_path,
                             "size": record.size,
                             "optimizedSize": optimized_size,
                             "savings": saving,
@@ -4092,6 +4214,26 @@ class BundleAnalyzer:
                     )
                     total_savings += saving
                     optimized_records.append(record)
+
+        # Size alone is enough to warrant a review, even when a browser cannot
+        # decode the format or the file falls outside the bounded conversion
+        # batch. No saving is claimed until the app's rendered size is known.
+        for record in records:
+            if (
+                record.category == "image"
+                and record.size >= LARGE_IMAGE_REVIEW_BYTES
+                and ".car::" not in record.relative_path
+            ):
+                add_image_review(
+                    name=record.name,
+                    path=record.relative_path,
+                    asset_path=record.relative_path,
+                    size=record.size,
+                    width=int(record.metadata.get("pixelWidth", 0) or 0),
+                    height=int(record.metadata.get("pixelHeight", 0) or 0),
+                    kind="loose image",
+                    record=record,
+                )
 
         # Browser/WASM catalog analysis supplies actual conversion byte counts.
         # A logical image can contain 1x, 2x and 3x renditions, so represent it
@@ -4119,12 +4261,40 @@ class BundleAnalyzer:
             if rendition is None:
                 continue
             size = int(rendition.get("size", 0) or 0)
+            metadata = entry.setdefault("metadata", {})
+            catalog_path = str(rendition.get("path", "")).split("::", 1)[0]
+            catalog_record = records_by_path.get(catalog_path)
+            item_path = str(
+                rendition.get("displayPath")
+                or rendition.get("path")
+                or catalog_path
+            )
+            asset_path = str(
+                entry.get("path") or rendition.get("path") or item_path
+            )
+            asset_name = str(
+                entry.get("name") or rendition.get("name") or "Image"
+            )
+            rendition_name = str(rendition.get("renditionName") or asset_name)
+            width = int(rendition.get("pixelWidth", 0) or 0)
+            height = int(rendition.get("pixelHeight", 0) or 0)
+            add_image_review(
+                name=asset_name,
+                path=item_path,
+                asset_path=asset_path,
+                size=size,
+                width=width,
+                height=height,
+                kind="asset catalog rendition",
+                record=catalog_record,
+                entry=entry,
+            )
+
             optimized_size = int(rendition.get("optimizedSize", 0) or 0)
             saving = size - optimized_size
             if not optimized_size or saving < 4 * 1024:
                 continue
             method = str(rendition.get("optimizationMethod") or "quality-85")
-            metadata = entry.setdefault("metadata", {})
             metadata["optimizedSizeEstimate"] = optimized_size
             metadata["optimizedOriginalSize"] = size
             metadata["optimizationSavingsEstimate"] = saving
@@ -4132,19 +4302,17 @@ class BundleAnalyzer:
             metadata["optimizationMethod"] = method
             if "optimize-images" not in entry.setdefault("insights", []):
                 entry["insights"].append("optimize-images")
-            catalog_path = str(rendition.get("path", "")).split("::", 1)[0]
-            catalog_record = records_by_path.get(catalog_path)
             if catalog_record is not None:
                 _mark([catalog_record], "optimize-images")
                 if catalog_record not in optimized_records:
                     optimized_records.append(catalog_record)
-            item_path = str(rendition.get("displayPath") or rendition.get("path") or catalog_path)
             catalog_paths.append(item_path)
-            width = int(rendition.get("pixelWidth", 0) or 0)
-            height = int(rendition.get("pixelHeight", 0) or 0)
             optimization_items.append(
                 {
+                    "name": asset_name,
                     "path": item_path,
+                    "assetPath": asset_path,
+                    "renditionName": rendition_name,
                     "size": size,
                     "optimizedSize": optimized_size,
                     "savings": saving,
@@ -4169,11 +4337,17 @@ class BundleAnalyzer:
                     f"Optimize {len(optimization_items)} image{'s' if len(optimization_items) != 1 else ''}",
                     f"Measured quality-85 conversions estimate about {total_savings:,} bytes of savings.",
                     detail=(
-                        "Each item is measured independently in this browser. HEIC is used "
-                        "only when the browser can really encode it; opaque images can fall "
-                        "back to JPEG. Conversion can change color or fine detail."
+                        "The arrow on each image is an actual quality-85 re-encode measured "
+                        "in this browser, not a ratio guess. HEIC is tested when the app's "
+                        "minimum iOS version supports it; opaque artwork can fall back to "
+                        "JPEG. Conversion can change colour or fine detail."
                     ),
-                    action="Review each converted image visually, then replace only assets that meet your quality bar.",
+                    action=(
+                        "Use the method shown on each row: convert the source to HEIC at "
+                        "quality 85 when HEIC wins (iOS 12+), or to quality-85 JPEG only "
+                        "when the artwork is opaque. Replace the source in .xcassets, compare "
+                        "it visually, then rebuild and measure the IPA again."
+                    ),
                     severity="high" if total_savings >= 1024 * 1024 else "medium",
                     confidence="medium",
                     savings=total_savings,
@@ -4183,20 +4357,34 @@ class BundleAnalyzer:
                 )
             )
 
-        if high_resolution:
-            _mark(high_resolution, "oversized-images")
+        if image_review_items:
+            _mark(image_review_records, "oversized-images")
+            image_review_items.sort(
+                key=lambda item: (-int(item["size"]), str(item["path"]).casefold())
+            )
             insights.append(
                 _insight(
                     "oversized-images",
-                    f"Review {len(high_resolution)} very high-resolution image{'s' if len(high_resolution) != 1 else ''}",
-                    "At least one dimension is 3,000 px or larger, which is often excessive for an in-app header.",
-                    detail="Pixel dimensions are measured locally with sips; required size depends on the maximum rendered point size and display scale.",
-                    action="Resize photographic assets to the largest rendered size × the maximum supported scale before compression.",
+                    f"Review {len(image_review_items)} large image{'s' if len(image_review_items) != 1 else ''}",
+                    "These images occupy at least 1 MB in the bundle or have an edge of 3,000 px or more.",
+                    detail=(
+                        "This is a review flag, not a claimed saving. A large source can be "
+                        "correct for a full-screen, zoomable, cropped, or iPad layout. The "
+                        "decoded pixel buffer can also be much larger than the encoded file."
+                    ),
+                    action=(
+                        "Check the largest rendered point size for each image and multiply it "
+                        "by the highest display scale you support. If the source exceeds that "
+                        "without a zoom or crop requirement, downscale it before applying the "
+                        "measured HEIC or JPEG compression recommendation."
+                    ),
                     severity="medium",
                     confidence="review",
                     savings=None,
-                    paths=[record.relative_path for record in high_resolution],
+                    paths=[str(item["path"]) for item in image_review_items],
+                    items=image_review_items,
                     category="images",
+                    review_only=True,
                 )
             )
 

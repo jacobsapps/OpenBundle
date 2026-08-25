@@ -124,12 +124,21 @@ def _deterministic_bytes(length: int) -> bytes:
     return bytes(output[:length])
 
 
-def _png(width: int = 48, height: int = 48) -> bytes:
+def _png(width: int = 48, height: int = 48, *, noise: bool = False) -> bytes:
     rows = bytearray()
+    random_pixels = _deterministic_bytes(width * height * 3) if noise else b""
+    random_offset = 0
     for y in range(height):
         rows.append(0)
         for x in range(width):
-            rows.extend(((x * 5) % 256, (y * 7) % 256, ((x + y) * 3) % 256, 255))
+            if noise:
+                rows.extend(random_pixels[random_offset : random_offset + 3])
+                random_offset += 3
+            else:
+                rows.extend(
+                    ((x * 5) % 256, (y * 7) % 256, ((x + y) * 3) % 256)
+                )
+            rows.append(255)
 
     def chunk(kind: bytes, payload: bytes) -> bytes:
         return (
@@ -177,6 +186,17 @@ def build(output: Path) -> None:
             _deterministic_bytes(220_000)
         )
         (resources / "preview.png").write_bytes(_png())
+        (resources / "large-preview.png").write_bytes(
+            _png(700, 700, noise=True)
+        )
+        for name, dimension in (
+            ("loose-art.png", 260),
+            ("loose-art@2x.png", 360),
+            ("loose-art@3x.png", 460),
+        ):
+            (resources / name).write_bytes(
+                _png(dimension, dimension, noise=True)
+            )
 
         with zipfile.ZipFile(
             output,

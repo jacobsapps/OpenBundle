@@ -49,7 +49,8 @@ jobs:
             sleep 0.1
           done
           curl --fail --silent http://127.0.0.1:8765/ >/dev/null
-          EXPECT_INSIGHT_IDS=duplicates \
+          EXPECT_INSIGHT_IDS=duplicates,oversized-images,asset-catalog-scales \
+          EXPECT_UNSCALED_THINNING=1 \
           EXPECT_NESTED_BREADCRUMB=1 \
           EXPECT_SYMBOL_STRING_TABLE=1 \
           node scripts/smoke_web.mjs \

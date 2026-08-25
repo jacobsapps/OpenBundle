@@ -109,7 +109,11 @@ class AnalyzerTests(unittest.TestCase):
             self.assertGreater(report["metrics"]["fileCount"], 260)
 
             self.assertTrue(
-                all(item["savings"] >= 100_000 for item in report["insights"])
+                all(
+                    item.get("reviewOnly") is True
+                    or item["savings"] >= 100_000
+                    for item in report["insights"]
+                )
             )
 
     def test_marks_exactly_repeated_components_as_duplicates(self) -> None:
@@ -154,13 +158,19 @@ class AnalyzerTests(unittest.TestCase):
             {"id": "tie-z", "title": "Zulu", "savings": 100_000},
             {"id": "large", "title": "Large", "savings": 300_000},
             {"id": "tie-a", "title": "Alpha", "savings": 100_000},
+            {
+                "id": "review",
+                "title": "Review",
+                "savings": None,
+                "reviewOnly": True,
+            },
         ]
 
         ranked = _rank_recommendations(candidates)
 
         self.assertEqual(
             [item["id"] for item in ranked],
-            ["large", "tie-a", "tie-z"],
+            ["large", "tie-a", "tie-z", "review"],
         )
 
     def test_component_duplicate_scope_recognizes_extension_roots(self) -> None:
@@ -198,6 +208,7 @@ class AnalyzerTests(unittest.TestCase):
             )
 
         records = [
+            image("Artwork.png", 40_000, "0" * 64),
             image("Artwork@2x.png", 120_000, "1" * 64),
             image("Artwork@3x.png", 260_000, "2" * 64),
             image("Icon@2x~iphone.png", 80_000, "3" * 64),
@@ -211,20 +222,28 @@ class AnalyzerTests(unittest.TestCase):
         BundleAnalyzer()._asset_catalog_insights(records, insights)
 
         insight = next(item for item in insights if item["id"] == "asset-catalog-scales")
-        self.assertEqual(insight["savings"], 200_000)
+        self.assertEqual(insight["savings"], 240_000)
         self.assertEqual(len(insight["items"]), 2)
         artwork = insight["items"][0]
         self.assertEqual(artwork["name"], "Artwork.png")
-        self.assertEqual(artwork["size"], 380_000)
+        self.assertEqual(artwork["size"], 420_000)
         self.assertEqual(artwork["retainedSize"], 260_000)
-        self.assertEqual(artwork["savings"], 120_000)
+        self.assertEqual(artwork["retainedScale"], 3)
+        self.assertEqual(artwork["savings"], 160_000)
+        self.assertEqual(artwork["twoXRetainedSize"], 120_000)
+        self.assertEqual(artwork["twoXSavings"], 300_000)
         self.assertEqual(
             [variant["scale"] for variant in artwork["variants"]],
-            [2, 3],
+            [1, 2, 3],
         )
-        self.assertNotIn("asset-catalog-scales", records[4].insight_ids)
+        self.assertTrue(artwork["variants"][0]["implicitScale"])
+        self.assertEqual(
+            [estimate["savings"] for estimate in artwork["deviceEstimates"]],
+            [160_000, 300_000],
+        )
         self.assertNotIn("asset-catalog-scales", records[5].insight_ids)
         self.assertNotIn("asset-catalog-scales", records[6].insight_ids)
+        self.assertNotIn("asset-catalog-scales", records[7].insight_ids)
 
     def test_duplicate_recommendation_keeps_every_group_for_expansion(self) -> None:
         records = []
@@ -1598,6 +1617,10 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn('data-view="binaries"', html)
             self.assertIn('id="recommendations-count"', html)
             self.assertIn("bundle treemap", html)
+            self.assertIn('id="treemap-inspector"', html)
+            self.assertIn("view in images", html)
+            self.assertIn("recommendation-guidance", html)
+            self.assertIn("no size claim", html)
             self.assertNotIn('id="map-key"', html)
             self.assertNotIn("map-recommendation-mark", html)
             self.assertIn('id="duplicate-map-key"', html)
@@ -1898,6 +1921,11 @@ class AnalyzerTests(unittest.TestCase):
         by_id = {item["id"]: item for item in insights}
         self.assertEqual(by_id["duplicates"]["savings"], 100_000)
         self.assertEqual(by_id["optimize-images"]["savings"], 40_000)
+        self.assertEqual(by_id["optimize-images"]["items"][0]["name"], "Header")
+        self.assertEqual(
+            by_id["optimize-images"]["items"][0]["assetPath"],
+            "Assets.car::Header",
+        )
         self.assertIn("duplicates", children[0]["insights"])
         self.assertIn("optimize-images", children[0]["insights"])
         metadata = children[0]["metadata"]
@@ -1916,6 +1944,73 @@ class AnalyzerTests(unittest.TestCase):
         self.assertEqual(
             metadata["thumbnailDataURL"], "data:image/webp;base64,UklGRg=="
         )
+
+    def test_large_catalog_images_are_reviewed_without_claiming_savings(self) -> None:
+        heavy_entry = {
+            "name": "HeavyArtwork",
+            "path": "Assets.car::HeavyArtwork",
+            "kind": "asset",
+            "metadata": {"assetType": "image"},
+            "insights": [],
+        }
+        wide_entry = {
+            "name": "WideArtwork",
+            "path": "Assets.car::WideArtwork",
+            "kind": "asset",
+            "metadata": {"assetType": "image"},
+            "insights": [],
+        }
+        renditions = [
+            {
+                "entry": heavy_entry,
+                "name": "HeavyArtwork",
+                "renditionName": "HeavyArtwork@3x.png",
+                "path": heavy_entry["path"],
+                "displayPath": f"{heavy_entry['path']}/HeavyArtwork@3x.png [entry-100]",
+                "size": 1_200_000,
+                "assetType": "image",
+                "pixelWidth": 1200,
+                "pixelHeight": 900,
+                "scale": 3,
+                "physical": True,
+            },
+            {
+                "entry": wide_entry,
+                "name": "WideArtwork",
+                "renditionName": "WideArtwork@3x.png",
+                "path": wide_entry["path"],
+                "displayPath": f"{wide_entry['path']}/WideArtwork@3x.png [entry-101]",
+                "size": 240_000,
+                "assetType": "image",
+                "pixelWidth": 3200,
+                "pixelHeight": 500,
+                "scale": 3,
+                "physical": True,
+            },
+        ]
+        catalog = Record(
+            relative_path="Assets.car",
+            absolute_path=Path("/temporary/Test.app/Assets.car"),
+            size=1_500_000,
+            compressed_size=1_400_000,
+            allocated_size=1_500_000,
+            category="asset_catalog",
+            sha256="9" * 64,
+        )
+        insights: list[dict] = []
+
+        BundleAnalyzer()._image_insights([catalog], renditions, "18.0", insights)
+
+        review = next(item for item in insights if item["id"] == "oversized-images")
+        self.assertTrue(review["reviewOnly"])
+        self.assertIsNone(review["savings"])
+        self.assertEqual(review["itemCount"], 2)
+        self.assertEqual(review["items"][0]["name"], "HeavyArtwork")
+        self.assertEqual(review["items"][0]["assetPath"], heavy_entry["path"])
+        self.assertIn("1,200,000 stored bytes", review["items"][0]["reason"])
+        self.assertIn("3,200×500 pixels", review["items"][1]["reason"])
+        self.assertIn("oversized-images", heavy_entry["insights"])
+        self.assertEqual(_rank_recommendations(insights), [review])
 
     def test_asset_rendition_metadata_is_bounded_and_image_only(self) -> None:
         image_entry = {

@@ -406,10 +406,10 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 7px;
-      padding: 0 9px 0 10px;
+      gap: 5px;
+      padding: 0 6px;
       border-color: rgba(255,255,255,.23);
-      border-left: 5px solid var(--tile);
+      border-left: 4px solid var(--tile);
       background: #302d2c;
       cursor: zoom-in;
       font-size: 11px;
@@ -417,7 +417,7 @@
       letter-spacing: .005em;
     }
     .treemap-group-label span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .treemap-group-label span:last-child { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; color: #d1cbca; font-size: 10px; }
+    .treemap-group-label span:last-child { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; color: #d1cbca; font-size: 9px; }
     .treemap-group-label b { color: var(--orange); font-size: 15px; line-height: 1; }
     .treemap-group-label:hover, .treemap-block:hover { filter: brightness(1.1) saturate(1.04); }
     .treemap-block {
@@ -431,7 +431,7 @@
         inset 0 0 0 1px rgba(255,255,255,.38),
         inset 0 0 0 999px rgba(20,17,16,var(--shade,.03));
     }
-    .treemap-block.leaf { cursor: default; }
+    .treemap-block.leaf { cursor: pointer; }
     .treemap-block:hover, .treemap-block:focus-visible { outline: 2px solid white; outline-offset: -2px; }
     .treemap-group.duplication,
     .treemap-group-label.duplication,
@@ -451,22 +451,23 @@
     .treemap-group-label.duplication:focus-visible { outline-color: #ffdce2; }
     .tile-copy {
       position: absolute;
-      inset: 7px 8px auto;
+      inset: 4px 5px auto;
       min-width: 0;
       pointer-events: none;
     }
     .tile-name {
-      display: block;
+      display: -webkit-box;
       overflow: hidden;
       font-size: var(--tile-font,11px);
       font-weight: 800;
-      line-height: 1.08;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      line-height: 1.05;
+      overflow-wrap: anywhere;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
     .tile-size {
       display: block;
-      margin-top: 4px;
+      margin-top: 2px;
       color: rgba(255,255,255,.9);
       font-size: 10px;
       font-variant-numeric: tabular-nums;
@@ -516,6 +517,64 @@
       font-size: 20px;
     }
     .contents-list { display: grid; }
+    .treemap-inspector {
+      display: grid;
+      gap: 9px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .treemap-inspector[hidden] { display: none; }
+    .treemap-inspector-preview {
+      aspect-ratio: 16 / 10;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background:
+        linear-gradient(45deg,rgba(255,255,255,.035) 25%,transparent 25% 75%,rgba(255,255,255,.035) 75%),
+        linear-gradient(45deg,rgba(255,255,255,.035) 25%,transparent 25% 75%,rgba(255,255,255,.035) 75%);
+      background-position: 0 0,7px 7px;
+      background-size: 14px 14px;
+    }
+    .treemap-inspector-preview[hidden] { display: none; }
+    .treemap-inspector-preview img { width: 100%; height: 100%; object-fit: contain; }
+    .treemap-inspector-copy { min-width: 0; }
+    .treemap-inspector-copy strong {
+      display: block;
+      overflow-wrap: anywhere;
+      font-size: 11px;
+      line-height: 1.25;
+    }
+    .treemap-inspector-copy span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .treemap-inspector-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+    .treemap-inspector-meta span {
+      padding: 3px 6px;
+      border-radius: 5px;
+      color: #ddd7d4;
+      background: rgba(255,255,255,.055);
+      font-size: 8px;
+      font-weight: 760;
+    }
+    .treemap-inspector-action {
+      min-height: 34px;
+      padding: 0 9px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      color: var(--text);
+      background: var(--panel-soft);
+      font: 760 9px var(--body);
+      cursor: pointer;
+    }
+    .treemap-inspector-action:hover { border-color: var(--orange); }
     .duplicate-map-key {
       display: grid;
       gap: 7px;
@@ -671,6 +730,23 @@
       padding: 12px 17px 17px 75px;
       border-top: 1px solid var(--line);
     }
+    .recommendation-guidance {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 11px;
+      padding: 10px 11px;
+      border: 1px solid color-mix(in srgb,var(--tone) 24%,var(--line));
+      border-radius: 9px;
+      background: color-mix(in srgb,var(--tone) 4%,transparent);
+    }
+    .recommendation-guidance p { margin: 0; line-height: 1.45; }
+    .recommendation-guidance strong {
+      margin-top: 3px;
+      color: var(--text);
+      font-size: 9px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
     .recommendation-evidence-list { display: grid; gap: 6px; }
     .recommendation-evidence {
       overflow: hidden;
@@ -678,6 +754,14 @@
       border-radius: 9px;
       background: rgba(255,255,255,.018);
     }
+    button.recommendation-evidence {
+      width: 100%;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    button.recommendation-evidence:hover { border-color: color-mix(in srgb,var(--tone) 55%,var(--line)); }
     .recommendation-evidence[hidden] { display: none; }
     .recommendation-evidence > summary,
     .recommendation-evidence-static {
@@ -700,6 +784,25 @@
       outline-offset: -2px;
     }
     .recommendation-evidence-static { grid-template-columns: minmax(0,1fr) auto; }
+    .evidence-content {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 44px minmax(0,1fr);
+      gap: 10px;
+      align-items: center;
+    }
+    .evidence-content.no-preview { grid-template-columns: minmax(0,1fr); }
+    .evidence-thumbnail {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: rgba(255,255,255,.035);
+    }
+    .evidence-thumbnail img { width: 100%; height: 100%; object-fit: contain; }
     .evidence-primary { min-width: 0; }
     .evidence-primary strong,
     .evidence-primary code {
@@ -1584,6 +1687,9 @@
       .map-layout { grid-template-columns: minmax(0,1fr) 196px; }
       .image-browser { grid-template-columns: 230px minmax(0,1fr); }
     }
+    @media (max-width: 900px) {
+      .treemap-inspector { display: none !important; }
+    }
     @media (max-width: 900px) and (min-width: 761px) {
       .map-layout { height: auto; min-height: 0; grid-template-columns: 1fr; }
       .contents-card {
@@ -1810,6 +1916,15 @@
           <aside class="contents-card">
             <h3>Contents</h3>
             <div class="contents-list" id="contents-list"></div>
+            <section class="treemap-inspector" id="treemap-inspector" aria-live="polite" hidden>
+              <div class="treemap-inspector-preview" id="treemap-inspector-preview" hidden><img id="treemap-inspector-image" alt=""></div>
+              <div class="treemap-inspector-copy">
+                <strong id="treemap-inspector-name"></strong>
+                <span id="treemap-inspector-path"></span>
+              </div>
+              <div class="treemap-inspector-meta" id="treemap-inspector-meta"></div>
+              <button class="treemap-inspector-action" id="treemap-inspector-action" type="button" hidden>View in Images</button>
+            </section>
             <div class="duplicate-map-key" id="duplicate-map-key" aria-label="Duplication treemap key" hidden>
               <div class="duplicate-key-row"><i class="duplicate-key-mark" aria-hidden="true"></i><span>Duplication</span></div>
             </div>
@@ -1876,8 +1991,8 @@
     const HAS_DELIVERY_METRICS = REPORT.metrics?.delivery?.kind === "latest-iphone-thinning-estimate";
     const METRIC = HAS_DELIVERY_METRICS ? "installSize" : "size";
     const QUALIFYING_INSIGHTS = [...REPORT.insights]
-      .filter(item => typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000)
-      .sort((a,b) => b.savings - a.savings || String(a.title || a.id).localeCompare(String(b.title || b.id)));
+      .filter(item => item.reviewOnly === true || (typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000))
+      .sort((a,b) => Number(a.reviewOnly === true) - Number(b.reviewOnly === true) || Number(b.savings || 0) - Number(a.savings || 0) || String(a.title || a.id).localeCompare(String(b.title || b.id)));
     const LINKING_REVIEWS = (Array.isArray(REPORT.architecture?.linkingReviews)
       ? REPORT.architecture.linkingReviews
       : [])
@@ -2135,7 +2250,7 @@
       const prepared = compactNodes(nodes,bounds,depth);
       for (const rectangle of squarify(prepared,bounds)) {
         const node = rectangle.node;
-        const baseGap = depth === 0 ? 5 : 4;
+        const baseGap = depth === 0 ? 3 : 2;
         const gap = Math.max(0,Math.min(baseGap,rectangle.width * .16,rectangle.height * .16));
         const entry = {
           node, depth,
@@ -2145,8 +2260,8 @@
         if (entry.width < 3 || entry.height < 3) continue;
         const children = (node.children || []).filter(child => nodeSize(child) > 0);
         const isSyntheticAggregate = String(node.path || "").endsWith("::smaller");
-        entry.nested = Boolean(allowNested && !isSyntheticAggregate && children.length && depth < 2 && entry.width >= 128 && entry.height >= 90 && entry.width * entry.height >= 14000);
-        entry.labelHeight = 36;
+        entry.nested = Boolean(allowNested && !isSyntheticAggregate && children.length && depth < 2 && entry.width >= 112 && entry.height >= 82 && entry.width * entry.height >= 11000);
+        entry.labelHeight = 32;
         output.push(entry);
         if (entry.nested) {
           treemapEntries(children,{
@@ -2217,6 +2332,10 @@
     const map = document.getElementById("bundle-map");
     const mapStatus = document.getElementById("map-status");
     const backButton = document.getElementById("back-button");
+    const mapInspector = document.getElementById("treemap-inspector");
+    const mapInspectorPreview = document.getElementById("treemap-inspector-preview");
+    const mapInspectorImage = document.getElementById("treemap-inspector-image");
+    const mapInspectorAction = document.getElementById("treemap-inspector-action");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
     let mapGeneration = 0;
     let activeMapAnimation = null;
@@ -2224,6 +2343,27 @@
       const match = [...layer.querySelectorAll("[data-node-path]")].find(element => element.dataset.nodePath === String(path || ""));
       (match || document.querySelector(".crumb-current"))?.focus({preventScroll:true});
     };
+    function inspectTreemapNode(node) {
+      const metadata = node?.metadata || {};
+      const headline = metadata.headlineRendition || {};
+      const width = Number(headline.width || metadata.pixelWidth || 0);
+      const height = Number(headline.height || metadata.pixelHeight || 0);
+      const preview = String(metadata.thumbnailDataURL || "");
+      document.getElementById("treemap-inspector-name").textContent = String(node?.name || "Bundle item");
+      document.getElementById("treemap-inspector-path").textContent = String(node?.path || node?.name || "");
+      const facts = [fmt(nodeSize(node)),categoryName(node?.category || "other")];
+      if (width && height) facts.push(`${width.toLocaleString()}×${height.toLocaleString()}`);
+      if (nodeDuplicateGroup(node)) facts.push("Duplication");
+      document.getElementById("treemap-inspector-meta").innerHTML = facts.map(value => `<span>${esc(value)}</span>`).join("");
+      mapInspectorPreview.hidden = !preview;
+      if (preview) mapInspectorImage.src = preview;
+      else mapInspectorImage.removeAttribute("src");
+      const isImage = (node?.kind === "asset" && metadata.assetType === "image")
+        || (node?.kind === "file" && node?.category === "image" && !String(node?.path || "").includes("::smaller"));
+      mapInspectorAction.hidden = !isImage;
+      mapInspectorAction.dataset.imagePath = isImage ? String(node.path || "") : "";
+      mapInspector.hidden = false;
+    }
     function renderMap(options = {}) {
       if (!map.clientWidth) return;
       const generation = ++mapGeneration;
@@ -2231,6 +2371,7 @@
       activeMapAnimation = null;
       const root = focusNode();
       map.replaceChildren();
+      mapInspector.hidden = true;
       map.classList.remove("animating");
       map.setAttribute("aria-label",`${root.name}, ${HAS_DELIVERY_METRICS ? "install" : "unpacked bundle"} size treemap`);
       document.getElementById("duplicate-map-key").hidden = !nodeHasDuplicateEvidence(root);
@@ -2249,7 +2390,7 @@
       layer.className = "treemap-layer";
       const hoverFrame = document.createElement("div");
       hoverFrame.className = "treemap-hover-frame";
-      const showGroupFrame = entry => {
+      const showEntryFrame = entry => {
         hoverFrame.style.cssText = `left:${entry.x}px;top:${entry.y}px;width:${entry.width}px;height:${entry.height}px`;
         hoverFrame.classList.add("visible");
       };
@@ -2262,7 +2403,6 @@
         const duplicateState = directDuplicateGroup ? "duplication" : "";
         const duplicateDescription = duplicateState ? "Duplication" : "";
         const directDuplicateLabel = "Duplication";
-        const title = `${node.path || node.name}\n${fmt(size)}${duplicateDescription ? `\n${duplicateDescription}` : ""}`;
         if (entry.nested) {
           const frame = document.createElement("div");
           frame.className = `treemap-group${duplicateState ? ` ${duplicateState}` : ""}`;
@@ -2278,30 +2418,38 @@
           label.setAttribute("aria-label",`Open ${node.name}, ${fmt(size)}${duplicateDescription ? `, ${duplicateDescription}` : ""}`);
           label.style.cssText = `left:${entry.x + 2}px;top:${entry.y + 2}px;width:${Math.max(0,entry.width - 4)}px;height:${Math.max(17,entry.labelHeight - 4)}px;--tile:${color};z-index:${25 + depth * 3}`;
           label.innerHTML = `<span>${esc(node.name)}</span><span>${directDuplicateGroup ? `<em class="group-duplicate-label">${esc(directDuplicateLabel)}</em>` : ""}${fmt(size)}<b>›</b></span>`;
-          label.addEventListener("pointerenter",() => showGroupFrame(entry));
+          label.addEventListener("pointerenter",() => { showEntryFrame(entry); inspectTreemapNode(node); });
           label.addEventListener("pointerleave",() => { if (!label.matches(":focus")) hideGroupFrame(); });
-          label.addEventListener("focus",() => showGroupFrame(entry));
+          label.addEventListener("focus",() => { showEntryFrame(entry); inspectTreemapNode(node); });
           label.addEventListener("blur",hideGroupFrame);
           label.addEventListener("click",() => openGroup(node,entry));
           layer.appendChild(label);
           return;
         }
         const hasChildren = (node.children || []).length > 0;
-        const drillable = hasChildren && entry.width >= 24 && entry.height >= 24;
-        const element = document.createElement(drillable ? "button" : "div");
-        if (drillable) element.type = "button";
-        else element.setAttribute("role","img");
+        const drillable = hasChildren;
+        const element = document.createElement("button");
+        element.type = "button";
         const micro = entry.width < 8 || entry.height < 8 || entry.width * entry.height < 80;
         element.className = `treemap-block${drillable ? "" : " leaf"}${micro ? " micro" : ""}${duplicateState ? ` ${duplicateState}` : ""}`;
         element.dataset.nodePath = node.path || "";
         if (directDuplicateGroup) element.dataset.duplicateGroup = directDuplicateGroup;
-        element.title = title;
-        element.setAttribute("aria-label",`${node.name}, ${fmt(size)}${duplicateDescription ? `, ${duplicateDescription}` : ""}${drillable ? ", open group" : ""}`);
-        element.style.cssText = `left:${entry.x}px;top:${entry.y}px;width:${entry.width}px;height:${entry.height}px;--tile:${color};--shade:${Math.min(.17,.02 + depth * .045)};--tile-font:${Math.max(11,Math.min(15,Math.sqrt(entry.width * entry.height) / 15))}px;z-index:${5 + depth * 3}`;
-        if (entry.width >= 48 && entry.height >= 26) {
-          element.innerHTML = `<span class="tile-copy"><span class="tile-name">${esc(node.name)}</span>${entry.width >= 84 && entry.height >= 46 ? `<span class="tile-size">${fmt(size)}</span>` : ""}${directDuplicateGroup && entry.width >= 82 && entry.height >= 50 ? `<span class="tile-duplicate-label">${esc(directDuplicateLabel)}</span>` : ""}</span>`;
+        element.setAttribute("aria-label",`${node.name}, ${fmt(size)}${duplicateDescription ? `, ${duplicateDescription}` : ""}${drillable ? ", open group" : ", inspect item"}`);
+        element.style.cssText = `left:${entry.x}px;top:${entry.y}px;width:${entry.width}px;height:${entry.height}px;--tile:${color};--shade:${Math.min(.17,.02 + depth * .045)};--tile-font:${Math.max(8,Math.min(14,Math.sqrt(entry.width * entry.height) / 16))}px;z-index:${5 + depth * 3}`;
+        if (entry.width >= 34 && entry.height >= 18) {
+          element.innerHTML = `<span class="tile-copy"><span class="tile-name">${esc(node.name)}</span>${entry.width >= 72 && entry.height >= 42 ? `<span class="tile-size">${fmt(size)}</span>` : ""}${directDuplicateGroup && entry.width >= 76 && entry.height >= 48 ? `<span class="tile-duplicate-label">${esc(directDuplicateLabel)}</span>` : ""}</span>`;
         }
-        if (drillable) element.addEventListener("click",() => openGroup(node,entry));
+        element.addEventListener("pointerenter",() => { showEntryFrame(entry); inspectTreemapNode(node); });
+        element.addEventListener("pointerleave",() => { if (!element.matches(":focus")) hideGroupFrame(); });
+        element.addEventListener("focus",() => { showEntryFrame(entry); inspectTreemapNode(node); });
+        element.addEventListener("blur",hideGroupFrame);
+        element.addEventListener("click",() => {
+          if (drillable) openGroup(node,entry);
+          else {
+            inspectTreemapNode(node);
+            mapStatus.textContent = `Selected ${node.name}`;
+          }
+        });
         layer.appendChild(element);
       });
       map.append(layer,hoverFrame);
@@ -2456,6 +2604,9 @@
       if (item.id === "asset-catalog-scales") {
         return ["Enable image thinning",`Move ${count.toLocaleString()} loose scale set${count === 1 ? "" : "s"} into .xcassets.`];
       }
+      if (item.id === "oversized-images") {
+        return ["Review large images",`${count.toLocaleString()} image${count === 1 ? "" : "s"} crossed the 1 MB or 3,000 px review threshold.`];
+      }
       return QUICK_COPY[item.id] || [item.title,""];
     }
     function evidenceMeta(item,row,paths,variants) {
@@ -2466,9 +2617,18 @@
         if (type === "catalog") return `${count.toLocaleString()} catalog${count === 1 ? "" : "s"}${repeatedRenditions ? ` · ${repeatedRenditions.toLocaleString()} matching rendition${repeatedRenditions === 1 ? "" : "s"}` : ""}`;
         return `${count.toLocaleString()} matching cop${count === 1 ? "y" : "ies"}`;
       }
-      if (item.id === "asset-catalog-scales") return parentPath(row.path);
+      if (item.id === "asset-catalog-scales") {
+        const latest = Number.isFinite(Number(row.savings)) ? `3x saves ${fmt(row.savings)}` : "";
+        const twoX = Number.isFinite(Number(row.twoXSavings)) ? `2x saves ${fmt(row.twoXSavings)}` : "";
+        return [parentPath(row.path),latest,twoX].filter(Boolean).join(" · ");
+      }
+      if (item.id === "oversized-images") {
+        const source = String(row.assetPath || "").includes("::") ? String(row.assetPath).split("::",1)[0] : parentPath(row.path);
+        return [source,String(row.dimensions || ""),String(row.reason || "")].filter(Boolean).join(" · ");
+      }
       if (Number.isFinite(Number(row.optimizedSize)) && Number.isFinite(Number(row.size))) {
-        return `${fmt(row.size)} → ${fmt(row.optimizedSize)}`;
+        const source = String(row.assetPath || "").includes("::") ? String(row.assetPath).split("::",1)[0] : parentPath(row.path);
+        return [source,String(row.dimensions || ""),String(row.method || ""),`${fmt(row.size)} → ${fmt(row.optimizedSize)}`].filter(Boolean).join(" · ");
       }
       if (Number.isFinite(Number(row.strippedSize)) && Number.isFinite(Number(row.size))) {
         return `${fmt(row.size)} → ~${fmt(row.strippedSize)}`;
@@ -2488,6 +2648,10 @@
       const omitted = Math.max(0,Number(row.pathsOmitted || 0),Number(row.catalogPathsOmitted || 0),Number(row.pathCount || 0) - paths.length,Number(row.catalogCount || 0) - paths.length);
       const pathBody = `<div class="evidence-paths">${values.map(value => `
         <div class="evidence-path"><code>${esc(value.path)}</code>${value.value ? `<span>${esc(value.value)}</span>` : ""}</div>`).join("")}${omitted ? `<div class="evidence-path"><code>${omitted.toLocaleString()} paths omitted</code></div>` : ""}</div>`;
+      if (item.id === "asset-catalog-scales" && Array.isArray(row.deviceEstimates)) {
+        const deviceBody = `<div class="evidence-paths">${row.deviceEstimates.map(estimate => `<div class="evidence-path"><code>${esc(estimate.device || "Device")}: keep ${esc(`${Number(estimate.retainedScale || 0)}x`)}</code><span>Save ${fmt(estimate.savings)}</span></div>`).join("")}</div>`;
+        return `${pathBody}${deviceBody}`;
+      }
       if (item.id !== "duplicates" || duplicateType(row) !== "catalog") return pathBody;
       const rawGroups = Array.isArray(row.assetGroups) ? row.assetGroups : [];
       const repeatedRenditions = Math.max(0,Number(row.repeatedRenditionCount || row.repeatedAssetCount || 0),rawGroups.length);
@@ -2513,7 +2677,7 @@
       const title = String(row.name || fileName(path) || `Item ${index + 1}`);
       const meta = evidenceMeta(item,row,paths,variants);
       const approximate = ["strip-symbols","exported-symbols","asset-catalog-scales"].includes(item.id) ? "~" : "";
-      const saving = Number.isFinite(Number(row.savings)) ? `${approximate}${fmt(row.savings)}` : Number.isFinite(Number(row.size)) ? fmt(row.size) : "";
+      const saving = Number.isFinite(Number(row.savings)) ? `${item.id === "optimize-images" ? "Save " : ""}${approximate}${fmt(row.savings)}` : Number.isFinite(Number(row.size)) ? fmt(row.size) : "";
       const group = item.id === "duplicates" ? duplicateGroup(row) : "";
       const duplicateAction = type === "catalog" && (row.exactMatch === false || Number(row.repeatedAssetCount || 0) > 0 || (Array.isArray(row.assetGroups) && row.assetGroups.length))
         ? "Review catalog membership"
@@ -2524,8 +2688,21 @@
       const expandable = variants.length > 0 || paths.length > 1 || Number(row.pathsOmitted || 0) > 0 || (type === "catalog" && (Number(row.catalogPathsOmitted || 0) > 0 || Number(row.repeatedAssetCount || 0) > 0 || (Array.isArray(row.assetGroups) && row.assetGroups.length)));
       const hidden = index >= RECOMMENDATION_EVIDENCE_LIMIT ? " hidden" : "";
       const attributes = item.id === "duplicates" ? ` data-duplicate-type="${esc(type)}"${group ? ` data-duplicate-group="${esc(group)}"` : ""}` : "";
-      const primary = `<div class="evidence-primary">${duplicateBadges}<strong title="${esc(title)}">${esc(title)}</strong>${meta ? `<span title="${esc(meta)}">${esc(meta)}</span>` : ""}</div>`;
+      const rawAssetPath = String(row.assetPath || "");
+      const marker = path.indexOf("::");
+      const renditionSlash = marker >= 0 ? path.indexOf("/",marker + 2) : -1;
+      const inferredAssetPath = renditionSlash >= 0 ? path.slice(0,renditionSlash) : path;
+      const assetPath = rawAssetPath || inferredAssetPath;
+      const imageAsset = ["optimize-images","oversized-images"].includes(item.id)
+        ? imageAssets.find(asset => asset.path === assetPath)
+        : null;
+      const preview = imageAsset?.thumbnail
+        ? `<span class="evidence-thumbnail"><img src="${esc(imageAsset.thumbnail)}" alt=""></span>`
+        : "";
+      const copy = `<div class="evidence-primary">${duplicateBadges}<strong title="${esc(title)}">${esc(title)}</strong>${meta ? `<span title="${esc(meta)}">${esc(meta)}</span>` : ""}</div>`;
+      const primary = `<div class="evidence-content${preview ? "" : " no-preview"}">${preview}${copy}</div>`;
       if (!expandable) {
+        if (imageAsset) return `<button class="recommendation-evidence recommendation-evidence-static" type="button" data-image-path="${esc(imageAsset.path)}" aria-label="View ${esc(title)} in Images"${attributes}${hidden}>${primary}${saving ? `<span class="evidence-saving">${saving}</span>` : ""}</button>`;
         return `<div class="recommendation-evidence recommendation-evidence-static" tabindex="-1"${attributes}${hidden}>${primary}${saving ? `<span class="evidence-saving">${saving}</span>` : ""}</div>`;
       }
       return `<details class="recommendation-evidence"${attributes}${hidden}>
@@ -2535,7 +2712,8 @@
     }
     function recommendationDetails(item) {
       const items = cleanObjectArray(item.items);
-      if (!items.length) return "";
+      const guidance = item.detail || item.action ? `<div class="recommendation-guidance">${item.detail ? `<p>${esc(item.detail)}</p>` : ""}${item.action ? `<strong>What to do</strong><p>${esc(item.action)}</p>` : ""}</div>` : "";
+      if (!items.length) return guidance;
       const rows = items;
       const totalCount = Math.max(rows.length,Number(item.itemCount || 0));
       const omitted = Math.max(0,Number(item.itemsOmitted || 0),totalCount - rows.length);
@@ -2544,6 +2722,7 @@
         ? `<button class="recommendation-more" type="button" data-recommendation-more>Show ${Math.min(20,rows.length - RECOMMENDATION_EVIDENCE_LIMIT).toLocaleString()} more</button>`
         : "";
       return `<div class="recommendation-details">
+        ${guidance}
         <div class="recommendation-evidence-list">${rows.map((row,index) => recommendationEvidenceRow(item,row,index)).join("")}</div>
         ${more}${omitted ? `<span class="recommendation-evidence-count">${omitted.toLocaleString()} ${omittedLabel} omitted</span>` : ""}
       </div>`;
@@ -2580,12 +2759,17 @@
         const copy = recommendationCopy(item);
         const estimate = ["strip-symbols","exported-symbols","asset-catalog-scales"].includes(item.id) ? "~" : "";
         const details = recommendationDetails(item);
+        const reviewOnly = item.reviewOnly === true;
+        const metric = reviewOnly
+          ? `<div class="recommendation-saving"><strong>Review</strong><span>No size claim</span></div>`
+          : `<div class="recommendation-saving"><strong>${estimate}${fmt(item.savings)}</strong></div>`;
         const summary = `
             <span class="recommendation-icon">${iconSVG(item.id)}</span>
             <div class="recommendation-copy"><h3>${esc(copy[0])}</h3>${copy[1] ? `<p>${esc(copy[1])}</p>` : ""}</div>
-            <div class="recommendation-saving"><strong>${estimate}${fmt(item.savings)}</strong></div>`;
-        if (!details) return `<article class="recommendation" data-insight-id="${esc(item.id)}" data-savings="${item.savings}" style="--tone:${insightTone(item)}"><div class="recommendation-static-summary">${summary}</div></article>`;
-        return `<details class="recommendation" data-insight-id="${esc(item.id)}" data-savings="${item.savings}" style="--tone:${insightTone(item)}">
+            ${metric}`;
+        const data = reviewOnly ? ` data-review-only="true"` : ` data-savings="${item.savings}"`;
+        if (!details) return `<article class="recommendation" data-insight-id="${esc(item.id)}"${data} style="--tone:${insightTone(item)}"><div class="recommendation-static-summary">${summary}</div></article>`;
+        return `<details class="recommendation" data-insight-id="${esc(item.id)}"${data} style="--tone:${insightTone(item)}">
           <summary>
             ${summary}
             <span class="recommendation-chevron" aria-hidden="true">›</span>
@@ -2610,6 +2794,9 @@
         if (nextCount) button.textContent = `Show ${Math.min(20,nextCount).toLocaleString()} more`;
         else button.remove();
         (rows[0]?.querySelector(":scope > summary") || rows[0])?.focus();
+      }));
+      holder.querySelectorAll("[data-image-path]").forEach(button => button.addEventListener("click",() => {
+        openImageAsset(button.dataset.imagePath || "");
       }));
     }
 
@@ -3163,6 +3350,20 @@
     ];
     let selectedImageSource = imageSources[0]?.id || "all-images";
     let imageLimit = 200;
+    function openImageAsset(path) {
+      const assetIndex = imageAssets.findIndex(asset => asset.path === String(path || ""));
+      if (assetIndex < 0) return;
+      selectedImageSource = "all-images";
+      imageLimit = Math.max(200,assetIndex + 1);
+      showView("images");
+      renderImageSources();
+      renderImageList({focusAssetIndex:assetIndex});
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`#image-list [data-image-index="${assetIndex}"]`);
+        row?.scrollIntoView({block:"center"});
+        row?.focus({preventScroll:true});
+      });
+    }
     function renderImageSources() {
       document.getElementById("image-total").textContent = `${imageAssets.length.toLocaleString()} image assets`;
       document.getElementById("image-sources").innerHTML = imageSources.map(source => {
@@ -3281,6 +3482,7 @@
     renderImageSources();
     renderImageList();
     renderMap();
+    mapInspectorAction.addEventListener("click",() => openImageAsset(mapInspectorAction.dataset.imagePath || ""));
     let resizeTimer;
     addEventListener("resize",() => {
       const focusedPath = document.activeElement?.dataset?.nodePath;

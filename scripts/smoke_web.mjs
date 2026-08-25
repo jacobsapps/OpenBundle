@@ -223,9 +223,10 @@ try {
           const recommendationCards = [...document.querySelectorAll("#recommendations-list .recommendation")];
           const recommendations = recommendationCards.filter((element) => element.hasAttribute("data-insight-id"));
           const linkingReviewCards = recommendationCards.filter((element) => element.hasAttribute("data-linking-review"));
-          const recommendationSavings = recommendations.map((element) => Number(element.dataset.savings));
           const reportData = JSON.parse(document.querySelector("#report-data").textContent);
-          const qualifyingRecommendations = reportData.insights.filter((item) => typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000);
+          const qualifyingRecommendations = reportData.insights
+            .filter((item) => item.reviewOnly === true || (typeof item.savings === "number" && Number.isFinite(item.savings) && item.savings >= 100000))
+            .sort((a,b) => Number(a.reviewOnly === true) - Number(b.reviewOnly === true) || Number(b.savings || 0) - Number(a.savings || 0) || String(a.title || a.id).localeCompare(String(b.title || b.id)));
           const linkingReviews = (reportData.architecture?.linkingReviews || []).filter((item) => Number.isFinite(Number(item.reviewScopeBytes)) && Number(item.reviewScopeBytes) > 0).sort((a,b) => Number(b.reviewScopeBytes) - Number(a.reviewScopeBytes)).slice(0,3);
           const duplicateGroup = (item) => String(item?.group || item?.duplicateGroup || item?.duplicateCatalogGroup || item?.metadata?.duplicateCatalogGroup || "");
           const treeHasDuplicateEvidence = (node) => Boolean(
@@ -234,7 +235,9 @@ try {
             || (node?.children || []).some(treeHasDuplicateEvidence)
           );
           const duplicateInsight = qualifyingRecommendations.find((item) => item.id === "duplicates");
+          const thinningInsight = qualifyingRecommendations.find((item) => item.id === "asset-catalog-scales");
           const duplicateRecommendation = recommendations.find((element) => element.dataset.insightId === "duplicates");
+          const thinningRecommendation = recommendations.find((element) => element.dataset.insightId === "asset-catalog-scales");
           const duplicateEvidenceRows = [...(duplicateRecommendation?.querySelectorAll(".recommendation-evidence") || [])];
           const allowedDuplicateTypes = new Set(["file","catalog","component","asset"]);
           const duplicateEvidenceSemantics = !duplicateInsight || (duplicateEvidenceRows.length === (duplicateInsight.items || []).length
@@ -287,8 +290,10 @@ try {
             staleFrameworkReviewTags: [...document.querySelectorAll("#architecture-stack .architecture-tag")].filter((element) => /review static|mergeable/i.test(element.textContent || "")).length,
             recommendationsCountMatchesData: recommendationsCount === qualifyingRecommendations.length.toLocaleString(),
             recommendationsNavAccessible: recommendationsNav?.getAttribute("aria-label") === "Recommendations, " + qualifyingRecommendations.length.toLocaleString() + " available",
-            recommendationsSorted: recommendationSavings.every((value,index) => index === 0 || recommendationSavings[index - 1] >= value),
-            recommendationsMaterial: recommendationSavings.every((value) => Number.isFinite(value) && value >= 100000),
+            recommendationsSorted: qualifyingRecommendations.every((item,index) => recommendations[index]?.dataset.insightId === item.id),
+            recommendationsMaterial: qualifyingRecommendations.every((item,index) => item.reviewOnly === true
+              ? recommendations[index]?.dataset.reviewOnly === "true" && !recommendations[index]?.hasAttribute("data-savings") && /no size claim/i.test(recommendations[index]?.querySelector(".recommendation-saving")?.textContent || "")
+              : Number(recommendations[index]?.dataset.savings) === item.savings && item.savings >= 100000),
             recommendationIconsMissing: recommendationCards.filter((element) => !element.querySelector(".recommendation-icon svg")).length,
             recommendationExpanders: recommendationCards.filter((element) => element.matches("details")).length,
             expectedRecommendationExpanders: qualifyingRecommendations.filter((item) => Array.isArray(item.items) && item.items.length).length + linkingReviews.length,
@@ -298,6 +303,11 @@ try {
               const actual = recommendations[index]?.querySelectorAll(".recommendation-evidence").length || 0;
               return actual === expected;
             }),
+            recommendationGuidanceMatches: qualifyingRecommendations.every((item,index) => !item.detail && !item.action || Boolean(recommendations[index]?.querySelector(".recommendation-guidance"))),
+            imageRecommendationPreview: !qualifyingRecommendations.some((item) => item.id === "oversized-images") || Boolean(document.querySelector('#recommendations-list [data-insight-id="oversized-images"] [data-image-path] .evidence-thumbnail img')),
+            thinningModels2x: !thinningInsight || (thinningInsight.items || []).every((item) => Number.isFinite(Number(item.twoXSavings))),
+            thinningHasUnscaledVariant: Boolean((thinningInsight?.items || []).some((item) => (item.variants || []).some((variant) => variant.implicitScale === true))),
+            thinningDeviceEvidence: !thinningInsight || /latest 3x iphone/i.test(thinningRecommendation?.textContent || "") && /2x iphone/i.test(thinningRecommendation?.textContent || ""),
             duplicateEvidenceSemantics,
             hasPotentialBadges: [...document.querySelectorAll(".recommendation-saving span")].some((element) => /potential/i.test(element.textContent || "")),
             treemapTiles: document.querySelectorAll("#bundle-map .treemap-block, #bundle-map .treemap-group").length,
@@ -313,8 +323,8 @@ try {
             architectureDuplicateCopyClear: !architectureDuplicateRows.length || [...document.querySelectorAll("#architecture-stack .architecture-header")].some((element) => /repeated footprint/i.test(element.textContent || "")),
             bundleTreemapNavLabel: document.querySelector('[data-view="map"] > span:last-child')?.textContent.trim(),
             bundleTreemapHeader: document.querySelector("#view-map .view-head h2")?.textContent.trim(),
-            undersizedDrillTargets: [...document.querySelectorAll("#bundle-map button.treemap-block, #bundle-map .treemap-group-label")]
-              .filter((element) => { const rect = element.getBoundingClientRect(); return rect.width < 23.9 || rect.height < 23.9; }).length,
+            treemapTilesInspectable: [...document.querySelectorAll("#bundle-map .treemap-block")].every((element) => element instanceof HTMLButtonElement && /open group|inspect item/i.test(element.getAttribute("aria-label") || "")),
+            hasTreemapInspector: Boolean(document.querySelector("#treemap-inspector #treemap-inspector-name")),
             nativeParentTitles: [...document.querySelectorAll("#bundle-map .treemap-group-label")].filter((element) => element.title).length,
             imageSources: document.querySelectorAll("#image-sources .image-source").length,
             binariesMatchData: binaryRows.length === binaryItems.length,
@@ -362,6 +372,11 @@ try {
     reportUI?.recommendationExpanders !== reportUI?.expectedRecommendationExpanders ||
     !reportUI?.recommendationsAllExpandable ||
     !reportUI?.recommendationEvidenceMatches ||
+    !reportUI?.recommendationGuidanceMatches ||
+    !reportUI?.imageRecommendationPreview ||
+    !reportUI?.thinningModels2x ||
+    (process.env.EXPECT_UNSCALED_THINNING === "1" && !reportUI?.thinningHasUnscaledVariant) ||
+    !reportUI?.thinningDeviceEvidence ||
     !reportUI?.duplicateEvidenceSemantics ||
     reportUI?.hasPotentialBadges ||
     reportUI?.overlappingTilePairs > 0 ||
@@ -376,7 +391,8 @@ try {
     !reportUI?.architectureDuplicateCopyClear ||
     reportUI?.bundleTreemapNavLabel !== "Bundle treemap" ||
     reportUI?.bundleTreemapHeader !== "Bundle treemap" ||
-    reportUI?.undersizedDrillTargets > 0 ||
+    !reportUI?.treemapTilesInspectable ||
+    !reportUI?.hasTreemapInspector ||
     reportUI?.nativeParentTitles > 0 ||
     reportUI?.blockingGroupFrames > 0 ||
     reportUI?.oversizedGroupHeaders > 0 ||
@@ -465,6 +481,54 @@ try {
     });
     await delay(50);
   }
+  const imageRecommendationInteraction = JSON.parse(
+    (
+      await command("Runtime.evaluate", {
+        expression: `(() => {
+          document.querySelector('[data-view="insights"]')?.click();
+          const button = document.querySelector('#recommendations-list [data-insight-id="oversized-images"] [data-image-path]');
+          if (!button) return JSON.stringify({ available:false });
+          const path = button.dataset.imagePath || "";
+          const recommendation = button.closest("details.recommendation");
+          if (recommendation) recommendation.open = true;
+          button.click();
+          return JSON.stringify({
+            available:true,
+            path,
+            imagesActive:document.querySelector("#view-images")?.classList.contains("active") === true,
+            allImagesSelected:document.querySelector('#image-sources [data-source="all-images"]')?.classList.contains("active") === true,
+          });
+        })()`,
+        returnByValue: true,
+      })
+    ).result.value,
+  );
+  await delay(50);
+  const imageRecommendationSettled = JSON.parse(
+    (
+      await command("Runtime.evaluate", {
+        expression: `JSON.stringify({
+          focused:Boolean(document.activeElement?.closest?.("[data-image-index]")),
+          visible:Boolean(document.activeElement?.getBoundingClientRect?.().height),
+        })`,
+        returnByValue: true,
+      })
+    ).result.value,
+  );
+  if (
+    actualInsights.has("oversized-images") &&
+    (
+    !imageRecommendationInteraction.available ||
+    !imageRecommendationInteraction.imagesActive ||
+    !imageRecommendationInteraction.allImagesSelected ||
+    !imageRecommendationSettled.focused ||
+    !imageRecommendationSettled.visible
+    )
+  ) {
+    throw new Error(
+      `Image recommendation navigation failed: ${JSON.stringify({ imageRecommendationInteraction, imageRecommendationSettled })}.`,
+    );
+  }
   const architectureDuplicateInteraction = JSON.parse(
     (
       await command("Runtime.evaluate", {
@@ -533,6 +597,9 @@ try {
           ].every((value) => Math.abs(value) <= 1);
           const outlineVisible = outline?.classList.contains("visible") === true;
           const outlinePointerEvents = outline ? getComputedStyle(outline).pointerEvents : "";
+          const inspector = document.querySelector("#treemap-inspector");
+          const inspectorVisible = inspector?.hidden === false;
+          const inspectorPath = document.querySelector("#treemap-inspector-path")?.textContent || "";
           label.click();
           const layer = document.querySelector("#bundle-map .treemap-layer");
           const animation = layer?.getAnimations()[0];
@@ -543,6 +610,8 @@ try {
             outlineMatches,
             outlineVisible,
             outlinePointerEvents,
+            inspectorVisible,
+            inspectorPathMatches:inspectorPath === label.dataset.nodePath,
             animationStarted:Boolean(animation),
             animationUsesClip:frames.some((frame) => String(frame.clipPath || "").startsWith("inset(")),
             animationStretches:frames.some((frame) => /scale\\([^,]+,/.test(String(frame.transform || ""))),
@@ -578,6 +647,8 @@ try {
     (!mapInteraction.outlineMatches ||
       !mapInteraction.outlineVisible ||
       mapInteraction.outlinePointerEvents !== "none" ||
+      !mapInteraction.inspectorVisible ||
+      !mapInteraction.inspectorPathMatches ||
       animationFailed ||
       mapInteractionSettled.animationCount !== 0 ||
       mapInteractionSettled.animatingClass ||
@@ -663,6 +734,39 @@ try {
       throw new Error(`Requested treemap path was not marked as duplication: ${openedPath.path}.`);
     }
     await delay(250);
+  }
+  if (process.env.INSPECT_TREEMAP_PATH) {
+    const inspectedPath = JSON.parse(
+      (
+        await command("Runtime.evaluate", {
+          expression: `(() => {
+            const wanted = ${JSON.stringify(process.env.INSPECT_TREEMAP_PATH)};
+            const match = [...document.querySelectorAll("#bundle-map [data-node-path]")]
+              .find(element => element.dataset.nodePath === wanted && element instanceof HTMLButtonElement);
+            match?.dispatchEvent(new PointerEvent("pointerenter", { bubbles:false }));
+            match?.focus();
+            return JSON.stringify({
+              inspected:Boolean(match),
+              path:wanted,
+              inspectorPath:document.querySelector("#treemap-inspector-path")?.textContent || "",
+              previewVisible:document.querySelector("#treemap-inspector-preview")?.hidden === false,
+              previewSource:document.querySelector("#treemap-inspector-image")?.getAttribute("src") || "",
+            });
+          })()`,
+          returnByValue: true,
+        })
+      ).result.value,
+    );
+    if (!inspectedPath.inspected || inspectedPath.inspectorPath !== inspectedPath.path) {
+      throw new Error(`Requested treemap item could not be inspected: ${JSON.stringify(inspectedPath)}.`);
+    }
+    if (
+      process.env.EXPECT_TREEMAP_PREVIEW === "1" &&
+      (!inspectedPath.previewVisible || !inspectedPath.previewSource.startsWith("data:image/"))
+    ) {
+      throw new Error(`Requested treemap preview was missing: ${JSON.stringify(inspectedPath)}.`);
+    }
+    await delay(150);
   }
   if (process.env.OPEN_RECOMMENDATION_ID || process.env.OPEN_FIRST_RECOMMENDATION === "1") {
     await command("Runtime.evaluate", {

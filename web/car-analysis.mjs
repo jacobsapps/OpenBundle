@@ -1082,8 +1082,16 @@ export async function analyzeLooseImage(
       const jpeg = await tryCanvasEncoding(canvas, "image/jpeg", 0.85);
       if (jpeg) attempts.jpeg = jpeg;
     }
+    let preview = "";
+    try {
+      preview = await thumbnailDataURL(canvas);
+    } catch {
+      // Preview failure does not invalidate measured dimensions or conversions.
+    }
+    const properties = { pixelWidth: width, pixelHeight: height, hasAlpha };
+    if (preview) properties.thumbnailDataURL = preview;
     return {
-      properties: { pixelWidth: width, pixelHeight: height, hasAlpha },
+      properties,
       conversions: attempts,
       diagnostics,
     };
