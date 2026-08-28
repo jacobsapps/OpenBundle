@@ -2119,7 +2119,10 @@
       const type = duplicateType(item);
       return `<span class="duplicate-type-badge">${duplicateTypeIcon(type)}${esc(DUPLICATE_TYPE_LABELS[type])}</span>`;
     };
-    const nodeDuplicateGroup = node => duplicateGroup(node);
+    const nodeDuplicateGroup = node => String(
+      node?.duplicateGroup
+      || (node?.metadata?.exactMatch === true ? duplicateGroup(node) : "")
+    );
     function nodeDuplicateCount(node) {
       const childCount = (node?.children || []).reduce((total,child) => (
         total + (nodeDuplicateGroup(child) ? 1 : nodeDuplicateCount(child))
