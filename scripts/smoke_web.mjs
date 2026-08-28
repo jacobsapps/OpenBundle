@@ -163,22 +163,35 @@ try {
     );
   }
   if (process.env.EXPECT_SYMBOL_STRING_TABLE === "1") {
-    const treeContains = (node, name) =>
-      String(node?.name || "") === name ||
-      Array.from(node?.children || []).some((child) => treeContains(child, name));
-    const inventoryContains = Array.from(analysis.binaries?.items || []).some(
+    const isSymbolTable = (node) => {
+      if (String(node?.name || "") !== "LC_SYMTAB") return false;
+      const childNames = new Set(
+        Array.from(node?.children || []).map((child) => String(child?.name || "")),
+      );
+      return (
+        childNames.has("Symbol records") &&
+        childNames.has("Symbol string table")
+      );
+    };
+    const treeContainsSymbolTable = (node) =>
+      isSymbolTable(node) ||
+      Array.from(node?.children || []).some(treeContainsSymbolTable);
+    const inventoryContainsSymbolTable = Array.from(
+      analysis.binaries?.items || [],
+    ).some(
       (binary) =>
         Array.from(binary.architectures || []).some((architecture) =>
           Array.from(architecture.segments || []).some((segment) =>
-            Array.from(segment.sections || []).some(
-              (section) => section.name === "Symbol string table",
-            ),
+            Array.from(segment.sections || []).some(isSymbolTable),
           ),
         ),
     );
-    if (!treeContains(analysis.tree, "Symbol string table") || !inventoryContains) {
+    if (
+      !treeContainsSymbolTable(analysis.tree) ||
+      !inventoryContainsSymbolTable
+    ) {
       throw new Error(
-        "Symbol string table is missing from the treemap or Binaries inventory.",
+        "LC_SYMTAB does not contain both symbol regions in the treemap and Binaries inventory.",
       );
     }
   }
@@ -408,6 +421,62 @@ try {
     throw new Error(
       `Standalone report did not render cleanly: ${JSON.stringify(reportUI)}.`,
     );
+  }
+  if (process.env.EXPECT_SYMBOL_STRING_TABLE === "1") {
+    const openedSymbolBinary = (
+      await command("Runtime.evaluate", {
+        expression: `(() => {
+          document.querySelector('[data-view="binaries"]')?.click();
+          const reportData = JSON.parse(document.querySelector("#report-data").textContent);
+          const hasSymbolTable = (section) => section?.name === "LC_SYMTAB"
+            && (section.children || []).some(child => child.name === "Symbol records")
+            && (section.children || []).some(child => child.name === "Symbol string table");
+          const binary = (reportData.binaries?.items || []).find(item =>
+            (item.architectures || []).some(architecture =>
+              (architecture.segments || []).some(segment =>
+                (segment.sections || []).some(hasSymbolTable)
+              )
+            )
+          );
+          const row = [...document.querySelectorAll("#binaries-stack .binary-item")]
+            .find(element => element.querySelector(".binary-primary span")?.title === binary?.path);
+          if (row instanceof HTMLDetailsElement) row.open = true;
+          return Boolean(row);
+        })()`,
+        returnByValue: true,
+      })
+    ).result.value;
+    await delay(100);
+    const renderedSymbolTable = JSON.parse(
+      (
+        await command("Runtime.evaluate", {
+          expression: `(() => {
+            const groups = [...document.querySelectorAll('.binary-section-group[data-load-command="LC_SYMTAB"]')];
+            return JSON.stringify({
+              count:groups.length,
+              valid:groups.every(group => {
+                const parent = group.querySelector(":scope > .binary-section-group-head > strong")?.textContent.trim();
+                const children = [...group.querySelectorAll(":scope > .binary-section-children > .binary-section-child > strong")]
+                  .map(element => element.textContent.trim());
+                return parent === "LC_SYMTAB"
+                  && children.includes("Symbol records")
+                  && children.includes("Symbol string table");
+              }),
+            });
+          })()`,
+          returnByValue: true,
+        })
+      ).result.value,
+    );
+    if (
+      !openedSymbolBinary ||
+      renderedSymbolTable.count < 1 ||
+      !renderedSymbolTable.valid
+    ) {
+      throw new Error(
+        `LC_SYMTAB hierarchy did not render in Binaries: ${JSON.stringify({ openedSymbolBinary, renderedSymbolTable })}.`,
+      );
+    }
   }
   const recommendationInteraction = JSON.parse(
     (

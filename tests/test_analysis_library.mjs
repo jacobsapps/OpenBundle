@@ -491,7 +491,21 @@ test("normalizes malformed nested renderer collections", () => {
     },
   };
   value.binaries = {
-    items: [{ architectures: [{ dependencies: "A", segments: [{ sections: "B" }] }] }],
+    items: [{
+      architectures: [{
+        dependencies: "A",
+        segments: [
+          { sections: "B" },
+          { sections: [{ children: "C" }] },
+          {
+            sections: [{
+              name: "LC_SYMTAB",
+              children: [{ name: "Symbol records" }, { name: "Symbol string table" }],
+            }],
+          },
+        ],
+      }],
+    }],
   };
   value.locales = { rows: "en" };
 
@@ -512,6 +526,16 @@ test("normalizes malformed nested renderer collections", () => {
   assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].assetGroups[0].paths, []);
   assert.deepEqual(normalized.architecture.crossTargetDuplicates.items[0].assetGroups[0].catalogPaths, []);
   assert.deepEqual(normalized.binaries.items[0].architectures[0].segments[0].sections, []);
+  assert.deepEqual(
+    normalized.binaries.items[0].architectures[0].segments[1].sections[0].children,
+    [],
+  );
+  assert.deepEqual(
+    normalized.binaries.items[0].architectures[0].segments[2].sections[0].children.map(
+      (section) => section.name,
+    ),
+    ["Symbol records", "Symbol string table"],
+  );
   assert.deepEqual(normalized.locales.rows, []);
 });
 

@@ -138,8 +138,8 @@ The two findings are intentionally separate:
   entry points.
 
 The bundle map and expanded Binaries view also split non-section
-`__LINKEDIT` data by its load-command file ranges. Symbol records and the
-separate symbol-name string table appear as distinct `LC_SYMTAB` entries;
+`__LINKEDIT` data by its load-command file ranges. One `LC_SYMTAB` parent
+contains the fixed-size Symbol records and separate Symbol string table;
 export tries, fixups, dynamic-linking tables, code signatures, and remaining
 `__LINKEDIT` bytes are attributed without double-counting.
 

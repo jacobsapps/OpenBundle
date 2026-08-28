@@ -261,6 +261,12 @@ function normalizeReportCollections(input) {
       architecture.segments = objectArray(architecture.segments);
       for (const segment of architecture.segments) {
         segment.sections = objectArray(segment.sections);
+        const pendingSections = [...segment.sections];
+        while (pendingSections.length) {
+          const section = pendingSections.pop();
+          section.children = objectArray(section.children);
+          pendingSections.push(...section.children);
+        }
       }
     }
   }

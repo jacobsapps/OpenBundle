@@ -24,7 +24,7 @@ from tests.helpers import make_app
 
 
 class AnalyzerTests(unittest.TestCase):
-    def test_binary_views_split_symbol_records_and_string_table(self) -> None:
+    def test_binary_views_group_symbol_regions_under_lc_symtab(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = make_app(Path(directory))
             report = BundleAnalyzer().analyze(app)
@@ -38,15 +38,28 @@ class AnalyzerTests(unittest.TestCase):
             if child["name"] == "__LINKEDIT"
         )
         by_name = {child["name"]: child for child in linkedit_node["children"]}
-        self.assertEqual(by_name["Symbol records"]["size"], 32)
-        self.assertEqual(by_name["Symbol string table"]["size"], 14)
+        symbol_table = by_name["LC_SYMTAB"]
+        symbol_parts = {
+            child["name"]: child for child in symbol_table["children"]
+        }
+        self.assertEqual(symbol_table["kind"], "symbol-table")
+        self.assertEqual(symbol_parts["Symbol records"]["size"], 32)
+        self.assertEqual(symbol_parts["Symbol string table"]["size"], 14)
+        self.assertEqual(
+            sum(child["size"] for child in symbol_table["children"]),
+            symbol_table["size"],
+        )
         self.assertEqual(
             sum(child["size"] for child in linkedit_node["children"]),
             linkedit_node["size"],
         )
         self.assertEqual(
-            by_name["Symbol string table"]["metadata"]["loadCommand"],
+            symbol_table["metadata"]["loadCommand"],
             "LC_SYMTAB",
+        )
+        self.assertEqual(
+            symbol_parts["Symbol string table"]["path"],
+            "Test::__LINKEDIT::LC_SYMTAB::Symbol string table",
         )
 
         binary = next(
@@ -59,12 +72,27 @@ class AnalyzerTests(unittest.TestCase):
         )
         self.assertEqual(
             [section["name"] for section in linkedit["sections"]],
+            ["LC_SYMTAB"],
+        )
+        inventory_symbol_table = linkedit["sections"][0]
+        self.assertEqual(
+            [
+                section["name"]
+                for section in inventory_symbol_table["children"]
+            ],
             ["Symbol records", "Symbol string table"],
+        )
+        self.assertEqual(
+            sum(
+                section["size"]
+                for section in inventory_symbol_table["children"]
+            ),
+            inventory_symbol_table["size"],
         )
         self.assertEqual(linkedit["unattributedSize"], 0)
 
         html = render_report_html(report)
-        self.assertIn("Symbol names are stored separately.", html)
+        self.assertIn("LC_SYMTAB is the classic symbol table.", html)
         self.assertIn("Symbol string table", html)
 
     def test_latest_iphone_delivery_selects_arm64e_from_fat_binary(self) -> None:

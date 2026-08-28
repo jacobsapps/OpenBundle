@@ -1131,6 +1131,85 @@ def _mach_o_metadata_regions(
     return regions
 
 
+def _group_symbol_table_parts(
+    parts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Nest LC_SYMTAB's two referenced regions under one logical parent."""
+
+    symbol_kinds = {"symbol-records", "symbol-strings"}
+    symbol_indexes = [
+        index
+        for index, part in enumerate(parts)
+        if str(part.get("kind") or "") in symbol_kinds
+        and str((part.get("metadata") or {}).get("loadCommand") or "")
+        == "LC_SYMTAB"
+    ]
+    if not symbol_indexes:
+        return parts
+
+    children = [parts[index] for index in symbol_indexes]
+    child_metadata = [dict(child.get("metadata") or {}) for child in children]
+    size = sum(max(0, _integer(child.get("size"))) for child in children)
+    virtual_size = sum(
+        max(0, _integer(child.get("virtualSize"))) for child in children
+    )
+    offsets = [
+        _integer(child.get("fileOffset"))
+        for child in children
+        if child.get("fileOffset") is not None
+    ]
+    file_ranges = sorted(
+        (
+            dict(file_range)
+            for metadata in child_metadata
+            for file_range in metadata.get("fileRanges", [])
+            if isinstance(file_range, dict)
+        ),
+        key=lambda file_range: (
+            _integer(file_range.get("offset")),
+            _integer(file_range.get("size")),
+        ),
+    )
+    metadata: dict[str, Any] = {
+        "attribution": "load-command",
+        "loadCommand": "LC_SYMTAB",
+        "symbolCount": max(
+            (max(0, _integer(item.get("symbolCount"))) for item in child_metadata),
+            default=0,
+        ),
+        "removableEstimate": sum(
+            max(0, _integer(item.get("removableEstimate")))
+            for item in child_metadata
+        ),
+        "fileRanges": file_ranges,
+    }
+    reported_size = sum(
+        max(0, _integer(item.get("reportedSize", child.get("size"))))
+        for child, item in zip(children, child_metadata, strict=True)
+    )
+    if reported_size != size:
+        metadata["reportedSize"] = reported_size
+
+    parent = {
+        "name": "LC_SYMTAB",
+        "kind": "symbol-table",
+        "size": size,
+        "virtualSize": virtual_size,
+        "fileOffset": min(offsets) if offsets else None,
+        "metadata": metadata,
+        "children": children,
+    }
+    grouped: list[dict[str, Any]] = []
+    first_index = symbol_indexes[0]
+    symbol_index_set = set(symbol_indexes)
+    for index, part in enumerate(parts):
+        if index == first_index:
+            grouped.append(parent)
+        if index not in symbol_index_set:
+            grouped.append(part)
+    return grouped
+
+
 def _binary_segment_parts(
     slice_info: dict[str, Any], segment: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -1222,7 +1301,7 @@ def _binary_segment_parts(
                 "metadata": metadata,
             }
         )
-    return parts
+    return _group_symbol_table_parts(parts)
 
 
 def _binary_children(
@@ -1256,30 +1335,45 @@ def _binary_children(
             segment_size = int(segment.get("size", 0))
             if segment_size <= 0:
                 continue
-            section_nodes = [
-                {
-                    "name": str(part.get("name") or "Unnamed section"),
-                    "path": f"{prefix}::{segment.get('name')}::{part.get('name')}",
+            segment_name = str(segment.get("name") or "Unnamed segment")
+
+            def part_node(
+                part: dict[str, Any], parent_path: str
+            ) -> dict[str, Any]:
+                name = str(part.get("name") or "Unnamed section")
+                path = f"{parent_path}::{name}"
+                return {
+                    "name": name,
+                    "path": path,
                     "kind": str(part.get("kind") or "section"),
                     "category": "binary_section",
                     "size": int(part.get("size", 0)),
                     "compressedSize": int(part.get("size", 0)),
                     "allocatedSize": int(part.get("size", 0)),
-                    "children": [],
+                    "children": [
+                        part_node(child, path)
+                        for child in part.get("children", [])
+                        if isinstance(child, dict)
+                        and int(child.get("size", 0)) > 0
+                    ],
                     "metadata": {
-                        "segment": segment.get("name"),
+                        "segment": segment_name,
                         "virtualSize": part.get("virtualSize", 0),
                         "fileOffset": part.get("fileOffset"),
                         **dict(part.get("metadata") or {}),
                     },
                     "insights": [],
                 }
+
+            segment_path = f"{prefix}::{segment_name}"
+            section_nodes = [
+                part_node(part, segment_path)
                 for part in _binary_segment_parts(slice_info, segment)
                 if int(part.get("size", 0)) > 0
             ]
             other_name = (
                 "Other __LINKEDIT data"
-                if str(segment.get("name") or "") == "__LINKEDIT"
+                if segment_name == "__LINKEDIT"
                 else "Other segment data"
             )
             section_nodes = _normalize_virtual_sizes(
@@ -1288,12 +1382,12 @@ def _binary_children(
             for child in section_nodes:
                 if not child.get("path"):
                     child["path"] = (
-                        f"{prefix}::{segment.get('name')}::{child.get('name')}"
+                        f"{segment_path}::{child.get('name')}"
                     )
             nodes.append(
                 {
-                    "name": str(segment.get("name") or "Unnamed segment"),
-                    "path": f"{prefix}::{segment.get('name')}",
+                    "name": segment_name,
+                    "path": segment_path,
                     "kind": "segment",
                     "category": "binary_section",
                     "size": segment_size,
@@ -2427,18 +2521,30 @@ def _binary_inventory(
                 if not segment_size:
                     continue
                 segment_parts = _binary_segment_parts(architecture, segment)
+
+                def part_row(part: dict[str, Any]) -> dict[str, Any]:
+                    return {
+                        "name": str(
+                            part.get("name") or "Unnamed section"
+                        ),
+                        "kind": str(part.get("kind") or "section"),
+                        "size": max(0, int(part.get("size", 0) or 0)),
+                        "virtualSize": max(
+                            0, int(part.get("virtualSize", 0) or 0)
+                        ),
+                        "fileOffset": part.get("fileOffset"),
+                        "metadata": dict(part.get("metadata") or {}),
+                        "children": [
+                            part_row(child)
+                            for child in part.get("children", [])
+                            if isinstance(child, dict)
+                            and int(child.get("size", 0) or 0) > 0
+                        ],
+                    }
+
                 section_rows = sorted(
                     (
-                        {
-                            "name": str(part.get("name") or "Unnamed section"),
-                            "kind": str(part.get("kind") or "section"),
-                            "size": max(0, int(part.get("size", 0) or 0)),
-                            "virtualSize": max(
-                                0, int(part.get("virtualSize", 0) or 0)
-                            ),
-                            "fileOffset": part.get("fileOffset"),
-                            "metadata": dict(part.get("metadata") or {}),
-                        }
+                        part_row(part)
                         for part in segment_parts
                         if int(part.get("size", 0) or 0) > 0
                     ),

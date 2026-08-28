@@ -1418,6 +1418,36 @@
       border: 1px solid rgba(85,199,238,.16);
       background: rgba(18,103,132,.16);
     }
+    .binary-section-group {
+      min-width: 230px;
+      max-width: 430px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 5px;
+      padding: 5px;
+      white-space: normal;
+    }
+    .binary-section-group-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 1px;
+    }
+    .binary-section-group-head strong {
+      color: #d7f5ff;
+      letter-spacing: .025em;
+    }
+    .binary-section-children {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .binary-section.binary-section-child {
+      max-width: 190px;
+      border: 1px solid rgba(85,199,238,.13);
+      background: rgba(5,31,40,.38);
+    }
 
     .capabilities-stack,
     .locales-stack {
@@ -1791,6 +1821,7 @@
       .binary-composition { padding-inline: 10px; }
       .binary-segment { grid-template-columns: 74px minmax(80px,1fr) 65px; }
       .binary-sections { grid-column: 1 / -1; padding-top: 2px; }
+      .binary-section-group { width: 100%; min-width: 0; max-width: 100%; }
       .capabilities-groups { grid-template-columns: 1fr; }
       .capabilities-column { border-right: 0; }
       .capabilities-manifest-body { grid-template-columns: 1fr; }
@@ -1964,7 +1995,7 @@
           <h2>Binaries</h2>
           <div class="head-stat"><strong id="binary-count"></strong></div>
         </header>
-        <p class="binary-explainer"><strong>Symbol names are stored separately.</strong> LC_SYMTAB points to fixed-size symbol records and a separate symbol string table containing their names. When present, __LINKEDIT below also separates the dyld export trie, fixups, dynamic-linking tables and code signature.</p>
+        <p class="binary-explainer"><strong>LC_SYMTAB is the classic symbol table.</strong> OpenBundle groups its fixed-size Symbol records and separate Symbol string table beneath it. When present, __LINKEDIT also separates the dyld export trie, fixups, dynamic-linking tables and code signature.</p>
         <div class="binaries-stack" id="binaries-stack"></div>
       </section>
 
@@ -3003,6 +3034,21 @@
     function binarySegmentColor(name,path) {
       return nodeColor({name,path,category:"binary_section"});
     }
+    function binarySection(section,{nested = false} = {}) {
+      const children = Array.isArray(section.children) ? section.children : [];
+      const linkeditPart = section.kind && !["section","unattributed"].includes(section.kind);
+      const commands = section.metadata?.loadCommands || [];
+      const source = section.metadata?.loadCommand || commands.join(", ");
+      const sourceAttribute = source ? ` title="${esc(source)}" data-load-command="${esc(source)}"` : "";
+      if (children.length) {
+        const childNames = children.map(child => child.name).join(" and ");
+        return `<span class="binary-section binary-section-group${linkeditPart ? " linkedit-part" : ""}"${sourceAttribute} role="group" aria-label="${esc(`${section.name}, ${fmt(section.size)}, containing ${childNames}`)}">
+          <span class="binary-section-group-head"><strong>${esc(section.name)}</strong><span>${fmt(section.size)}</span></span>
+          <span class="binary-section-children">${children.map(child => binarySection(child,{nested:true})).join("")}</span>
+        </span>`;
+      }
+      return `<span class="binary-section${nested ? " binary-section-child" : ""}${linkeditPart ? " linkedit-part" : ""}"${sourceAttribute}><strong>${esc(section.name)}</strong><span>${fmt(section.size)}</span></span>`;
+    }
     function binaryComposition(binary) {
       if (!(binary.architectures || []).length) return `<div class="binary-composition"><div class="empty-state">Mach-O metadata unavailable.</div></div>`;
       return `<div class="binary-composition">${(binary.architectures || []).map(architecture => {
@@ -3027,12 +3073,7 @@
               <strong class="binary-segment-name">${esc(segment.name)}</strong>
               <span class="binary-segment-bar"><span style="width:${percentage.toFixed(2)}%"></span></span>
               <span class="binary-segment-size">${fmt(segment.size)}</span>
-              <div class="binary-sections">${sections.map(section => {
-                const linkeditPart = section.kind && !["section","unattributed"].includes(section.kind);
-                const commands = section.metadata?.loadCommands || [];
-                const source = section.metadata?.loadCommand || commands.join(", ");
-                return `<span class="binary-section${linkeditPart ? " linkedit-part" : ""}"${source ? ` title="${esc(source)}"` : ""}><strong>${esc(section.name)}</strong><span>${fmt(section.size)}</span></span>`;
-              }).join("")}</div>
+              <div class="binary-sections">${sections.map(section => binarySection(section)).join("")}</div>
             </div>`;
           }).join("") || `<div class="empty-state">No segments.</div>`}</div>
         </section>`;
