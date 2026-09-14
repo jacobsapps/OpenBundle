@@ -677,6 +677,52 @@
     .recommendation p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
     .recommendation-saving { padding-left: 15px; text-align: right; white-space: nowrap; }
     .recommendation-saving strong { display: block; font-family: var(--display); font-size: 20px; line-height: 1; }
+    .copy-agent-prompt {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-width: 132px;
+      min-height: 34px;
+      flex-shrink: 0;
+      padding: 7px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel-raised);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .copy-agent-prompt:hover { border-color: var(--orange); background: color-mix(in srgb,var(--orange) 10%,var(--panel)); }
+    .recommendations-head { max-width: 1040px; flex-wrap: wrap; gap: 12px 20px; }
+    .agent-prompt-dialog button { margin-top: 10px; }
+    .copy-agent-prompt svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+    .agent-prompt-dialog {
+      width: min(640px,calc(100% - 32px));
+      max-height: calc(100% - 32px);
+      padding: 24px;
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      color: var(--ink);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .agent-prompt-dialog::backdrop { background: rgba(0,0,0,.6); }
+    .agent-prompt-dialog h2 { margin: 0; font-family: var(--display); }
+    .agent-prompt-dialog p { color: var(--muted); font-size: 13px; }
+    .agent-prompt-dialog textarea {
+      display: block;
+      width: 100%;
+      height: 280px;
+      padding: 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: var(--ink);
+      background: var(--panel-soft);
+      font: 12px/1.6 var(--sans);
+      resize: vertical;
+    }
     .recommendation-saving span {
       display: block;
       margin-top: 4px;
@@ -1964,7 +2010,10 @@
       </section>
 
       <section class="view" id="view-insights">
-        <header class="view-head"><h2>Recommendations</h2></header>
+        <header class="view-head recommendations-head">
+          <h2>Recommendations</h2>
+          <button id="copy-agent-prompt" class="copy-agent-prompt" type="button" data-copy-agent-prompt aria-label="Copy as prompt: all recommendations"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>Copy as prompt</button>
+        </header>
         <div class="recommendations-list" id="recommendations-list"></div>
       </section>
 
@@ -2014,6 +2063,13 @@
     </main>
   </div>
 
+  <p id="agent-copy-status" class="sr-only" role="status"></p>
+  <dialog id="agent-prompt-dialog" class="agent-prompt-dialog" aria-labelledby="agent-prompt-title" aria-describedby="agent-prompt-help">
+    <h2 id="agent-prompt-title">Copy as prompt</h2>
+    <p id="agent-prompt-help">Your browser couldn’t copy automatically. Copy the selected text and paste it into your coding agent.</p>
+    <textarea id="agent-prompt-text" readonly aria-label="Agent prompt" spellcheck="false"></textarea>
+    <button id="agent-prompt-close" class="copy-agent-prompt" type="button">Done</button>
+  </dialog>
   <script id="report-data" type="application/json">__REPORT_DATA__</script>
   <script>
   (() => {
@@ -2643,6 +2699,108 @@
       }
       return QUICK_COPY[item.id] || [item.title,""];
     }
+    function agentPrompt(report,findings) {
+      const line = value => String(value ?? "").replace(/\s+/g," ").trim();
+      const app = report.app || {};
+      const delivery = report.metrics?.delivery;
+      const text = [
+        "Help me assess these OpenBundle app-size findings in my repository.",
+        "",
+        "Before making changes, ask which listed items I’d like you to tackle, whether I want pull requests (and if so, one or separate ones), and whether I’d like a local web page to review the changes and verification. Then use your judgment and follow the repository’s workflow. Estimates are not guaranteed savings; no worthwhile change is a valid outcome.",
+        "",
+        `App: ${line(app.name || "Unknown")} (${line(app.bundleID || "Unknown bundle ID")})`,
+        `Version: ${line(app.version || "Unknown")} · Build: ${line(app.build || "Unknown")}`,
+        `Report: OpenBundle ${line(report.generator?.version || "unknown version")} · ${line(report.generatedAt || "unknown date")}`,
+        ...(delivery ? [`Delivery target: ${line(delivery.target || "Unknown")} · estimated: ${delivery.estimated === true ? "yes" : delivery.estimated === false ? "no" : "unknown"}`] : []),
+        "",
+      ];
+      const sections = cleanObjectArray(findings).map(agentPromptFinding);
+      return [...text,sections.length ? sections.join("\n\n") : "No recommendations in this report."].join("\n");
+    }
+    function agentPromptFinding(item) {
+      const line = value => String(value ?? "").replace(/\s+/g," ").trim();
+      const bytes = value => `${Number(value).toLocaleString("en-US")} bytes`;
+      const linking = item.kind === "static-or-mergeable";
+      const title = linking ? `Review ${line(item.name || item.path)} linking` : line(item.title || item.id);
+      const review = linking || item.reviewOnly === true || item.confidence === "review" || item.savings == null;
+      const text = [
+        `Finding: ${title}`,
+        ...(item.summary ? [line(item.summary)] : []),
+        ...(linking ? ["Single-consumer dynamic framework; static or mergeable linking is a review opportunity, not a size-saving claim."] : []),
+        ...(review ? ["Review candidate, not a confirmed fix."] : []),
+        ...(typeof item.savings === "number" && Number.isFinite(item.savings) ? [`Potential saving: ${bytes(item.savings)} (not guaranteed).`] : []),
+        ...(item.confidence ? [`Report confidence: ${line(item.confidence)}`] : []),
+        "",
+        "Evidence from the report (bundle paths, not necessarily source paths):"
+      ];
+      const items = linking ? [{path:item.path,size:item.binarySize,consumer:item.consumer}] : cleanObjectArray(item.items);
+      let omittedGroups = 0;
+      const rows = items.flatMap(row => {
+        const groups = cleanObjectArray(row.assetGroups);
+        omittedGroups += Math.max(0,Number(row.assetGroupsOmitted || 0),Number(row.assetGroupCount || 0) - groups.length);
+        return groups.length ? groups : [row];
+      });
+      if (!rows.length) rows.push(...cleanStringArray(item.paths).map(path => ({path})));
+      for (const row of rows.slice(0,15)) {
+        const paths = [...new Set([row.path,row.assetPath,...cleanStringArray(row.paths),...cleanStringArray(row.catalogPaths),...cleanObjectArray(row.variants).map(variant => variant.path)].filter(Boolean).map(line))];
+        const omittedPaths = Math.max(0,paths.length - 4) + Math.max(0,Number(row.pathsOmitted || 0),Number(row.catalogPathsOmitted || 0));
+        const facts = [line(row.name),...paths.slice(0,4),omittedPaths ? `${omittedPaths} more paths not included` : "",line(row.dimensions),line(row.method)];
+        if (typeof row.size === "number") facts.push(`size: ${bytes(row.size)}`);
+        if (typeof row.optimizedSize === "number") facts.push(`conversion estimate: ${bytes(row.optimizedSize)}`);
+        if (typeof row.savings === "number") facts.push(`potential saving: ${bytes(row.savings)}`);
+        if (typeof row.exportCount === "number") facts.push(`${row.exportCount} exports`);
+        if (row.consumer) facts.push(`linked by: ${line(row.consumer)}`);
+        const architectures = cleanObjectArray(row.architectures).map(arch => line(arch.architecture)).filter(Boolean);
+        if (architectures.length) facts.push(`architectures: ${architectures.join(", ")}`);
+        text.push(`- ${[...new Set(facts.filter(Boolean))].join(" · ") || "No item details available"}`);
+      }
+      if (!rows.length) text.push("- No per-item evidence available in this report.");
+      if (rows.length > 15) text.push(`${rows.length - 15} additional evidence rows are not included in this prompt.`);
+      if (omittedGroups) text.push(`The source report also omits ${omittedGroups} nested asset groups.`);
+      const omittedItems = Math.max(0,Number(item.itemsOmitted || 0),Number(item.itemCount || 0) - items.length);
+      const omittedPaths = Math.max(0,Number(item.pathsOmitted || 0),Number(item.pathCount || 0) - cleanStringArray(item.paths).length);
+      if (omittedItems || omittedPaths) text.push(`The source report also omits ${omittedItems} items and ${omittedPaths} paths.`);
+      return text.join("\n");
+    }
+    document.getElementById("agent-prompt-close").addEventListener("click",() => {
+      document.getElementById("agent-prompt-dialog").close();
+    });
+    async function copyAgentPrompt(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Sandboxed reports and file:// exports may not have Clipboard API access.
+        const dialog = document.getElementById("agent-prompt-dialog");
+        const field = document.getElementById("agent-prompt-text");
+        field.value = text;
+        dialog.showModal();
+        field.focus();
+        field.select();
+        try {
+          if (document.execCommand("copy")) {
+            dialog.close();
+            return true;
+          }
+        } catch {}
+        return false;
+      }
+    }
+    const promptButton = document.getElementById("copy-agent-prompt");
+    const promptButtonLabel = promptButton.innerHTML;
+    const promptFindings = [...QUALIFYING_INSIGHTS,...LINKING_REVIEWS];
+    let promptResetTimer;
+    promptButton.hidden = !promptFindings.length;
+    promptButton.addEventListener("click",async () => {
+      clearTimeout(promptResetTimer);
+      promptButton.innerHTML = promptButtonLabel;
+      document.getElementById("agent-copy-status").textContent = "";
+      if (await copyAgentPrompt(agentPrompt(REPORT,promptFindings))) {
+        document.getElementById("agent-copy-status").textContent = "Prompt copied. Paste it into your coding agent.";
+        promptButton.textContent = "Copied!";
+        promptResetTimer = setTimeout(() => { promptButton.innerHTML = promptButtonLabel; },1800);
+      }
+    });
     function evidenceMeta(item,row,paths,variants) {
       if (item.id === "duplicates") {
         const type = duplicateType(row);

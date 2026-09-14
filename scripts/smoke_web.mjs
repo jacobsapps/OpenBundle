@@ -297,6 +297,10 @@ try {
           }
           return JSON.stringify({
             recommendations: recommendations.length,
+            promptButtonIsGlobal: document.querySelectorAll("[data-copy-agent-prompt]").length === 1
+              && Boolean(document.querySelector("#view-insights > .view-head > [data-copy-agent-prompt]"))
+              && !document.querySelector("#recommendations-list [data-copy-agent-prompt]")
+              && document.querySelector("[data-copy-agent-prompt]").hidden === !recommendationCards.length,
             recommendationsMatchData: recommendations.length === qualifyingRecommendations.length,
             linkingReviewsMatchData: linkingReviewCards.length === linkingReviews.length,
             linkingReviewMetricsAreScope: linkingReviewCards.every((element,index) => !element.hasAttribute("data-savings") && /binary/i.test(element.querySelector(".recommendation-saving")?.textContent || "") && Number(linkingReviews[index]?.reviewScopeBytes || 0) > 0),
@@ -374,6 +378,7 @@ try {
     !reportUI?.binariesComplete ||
     reportUI?.binaryOpportunityColumns !== 2 ||
     !reportUI?.recommendationsMatchData ||
+    !reportUI?.promptButtonIsGlobal ||
     !reportUI?.linkingReviewsMatchData ||
     !reportUI?.linkingReviewMetricsAreScope ||
     reportUI?.staleFrameworkReviewTags > 0 ||

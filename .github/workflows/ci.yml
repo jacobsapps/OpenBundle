@@ -29,6 +29,7 @@ jobs:
           node --check scripts/smoke_web.mjs
           node --check scripts/smoke_library.mjs
           node --test tests/test_analysis_library.mjs
+          node --test tests/test_agent_prompt.mjs
           node --test tests/test_car_analysis.mjs
           node --test tests/test_cgbi.mjs
           python3 scripts/vendor_pyodide.py --check

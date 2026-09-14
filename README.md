@@ -23,6 +23,12 @@ The report shows recommendations of 100 KB or more, ordered by saving. Each
 recommendation expands into its measured files, binaries, renditions, or scale
 sets.
 
+The Recommendations header has one **Copy as prompt** button for all findings,
+including linking reviews. It copies report context and compact evidence for your coding
+agent, asking it to agree scope, PR preferences, and optional local verification
+pages with you. It does not run an agent or upload anything. The button also
+works in exported HTML, with selectable text if clipboard access is unavailable.
+
 ## Download and install size
 
 The headline **Download** and **Install** values model the bundle delivered to
